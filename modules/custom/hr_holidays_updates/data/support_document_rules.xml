@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Apply/refresh supporting document rules on module upgrade -->
+    <function model="hr.leave.type" name="apply_support_document_rules"/>
+</odoo>
+

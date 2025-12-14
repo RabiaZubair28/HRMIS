@@ -15,6 +15,15 @@
                 <!-- Include legacy leave types where allowed_gender is empty/False -->
                 <attribute name="domain">['|','|',('allowed_gender','=',False),('allowed_gender','=','all'),('allowed_gender','=',employee_gender)]</attribute>
             </xpath>
+
+            <!-- Make supporting document mandatory when required by leave type -->
+            <xpath expr="//field[@name='supported_attachment_ids']" position="attributes">
+                <attribute name="required">leave_type_support_document and state in ('confirm','validate1')</attribute>
+            </xpath>
+            <xpath expr="//field[@name='supported_attachment_ids']" position="before">
+                <field name="support_document_note" readonly="1"
+                       invisible="not leave_type_support_document or state not in ('confirm','validate1')"/>
+            </xpath>
         </field>
     </record>
 
@@ -44,6 +53,10 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='name']" position="after">
                 <field name="allowed_gender"/>
+                <field name="support_document"/>
+                <field name="support_document_note"
+                       invisible="not support_document"
+                       placeholder="e.g. Medical Certificate / Government Permission Letter"/>
             </xpath>
         </field>
     </record>

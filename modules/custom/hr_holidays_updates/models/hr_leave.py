@@ -24,6 +24,12 @@ class HrLeave(models.Model):
         readonly=True,
     )
 
+    support_document_note = fields.Char(
+        related="holiday_status_id.support_document_note",
+        string="Supporting Document Requirement",
+        readonly=True,
+    )
+
     @api.depends('employee_id', 'employee_id.hrmis_gender', 'employee_id.gender')
     def _compute_employee_gender(self):
         """
@@ -62,6 +68,25 @@ class HrLeave(models.Model):
                 raise ValidationError(
                     "This leave type is restricted by gender. "
                     "Please select a leave type allowed for this employee."
+                )
+
+    @api.constrains('holiday_status_id', 'attachment_ids', 'state')
+    def _check_supporting_documents_required(self):
+        """
+        Enforce supporting documents for leave types that require them.
+        """
+        for leave in self:
+            if not leave.holiday_status_id:
+                continue
+            # Only enforce for active workflow states (avoid blocking cancelled/refused history edits)
+            if leave.state in ('cancel', 'refuse'):
+                continue
+            if not leave.holiday_status_id.support_document:
+                continue
+            if not leave.attachment_ids:
+                raise ValidationError(
+                    "A supporting document is required for this Time Off Type. "
+                    "Please attach the required document before submitting."
                 )
     
 
