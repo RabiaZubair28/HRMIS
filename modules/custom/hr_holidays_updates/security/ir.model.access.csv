@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_hrmis_user_profile_employee,hrmis.user.profile employee,model_hrmis_user_profile,hr.group_hr_user,1,1,1,0
+access_hrmis_user_profile_admin,hrmis.user.profile admin,model_hrmis_user_profile,hr.group_hr_manager,1,1,1,1
