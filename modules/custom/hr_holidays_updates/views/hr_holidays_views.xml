@@ -12,7 +12,8 @@
             </xpath>
 
             <xpath expr="//field[@name='holiday_status_id']" position="attributes">
-                <attribute name="domain">['|',('allowed_gender','=','all'),('allowed_gender','=',employee_gender)]</attribute>
+                <!-- Include legacy leave types where allowed_gender is empty/False -->
+                <attribute name="domain">['|','|',('allowed_gender','=',False),('allowed_gender','=','all'),('allowed_gender','=',employee_gender)]</attribute>
             </xpath>
         </field>
     </record>
@@ -29,7 +30,8 @@
             </xpath>
 
             <xpath expr="//field[@name='holiday_status_id']" position="attributes">
-                <attribute name="domain">['|',('allowed_gender','=','all'),('allowed_gender','=',employee_gender)]</attribute>
+                <!-- Include legacy leave types where allowed_gender is empty/False -->
+                <attribute name="domain">['|','|',('allowed_gender','=',False),('allowed_gender','=','all'),('allowed_gender','=',employee_gender)]</attribute>
             </xpath>
         </field>
     </record>

@@ -28,9 +28,10 @@ class HrLeaveAllocation(models.Model):
 
         gender = self.employee_gender
         if gender in ('male', 'female'):
-            domain = [('allowed_gender', 'in', ['all', gender])]
+            # Treat empty (False) as "All" for legacy leave types.
+            domain = [('allowed_gender', 'in', [False, 'all', gender])]
         else:
-            domain = [('allowed_gender', '=', 'all')]
+            domain = [('allowed_gender', 'in', [False, 'all'])]
 
         return {'domain': {'holiday_status_id': domain}}
 
