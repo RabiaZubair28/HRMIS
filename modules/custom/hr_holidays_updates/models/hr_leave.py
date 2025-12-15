@@ -119,72 +119,46 @@ class HrLeave(models.Model):
     @api.depends('employee_id')
     def _compute_employee_leave_balances(self):
         """
-        Compute approximate leave balances from validated allocations and validated leaves.
-        This intentionally ignores edge cases (accrual calendars, validity periods) unless your policy needs them.
+        Compute leave balances using Odoo's own leave type balance computation (same as UI),
+        so it matches accrual plans and validity rules.
         """
-        employees = self.mapped('employee_id')
-        if not employees:
-            for leave in self:
-                leave.employee_leave_balance_total = 0.0
-                leave.employee_earned_leave_balance = 0.0
-            return
+        def _remaining_for(leave_type, employee):
+            lt = leave_type.with_context(employee_id=employee.id, default_employee_id=employee.id)
+            # Prefer the same value used in the UI dropdown ("remaining out of")
+            if 'virtual_remaining_leaves' in lt._fields:
+                return lt.virtual_remaining_leaves or 0.0
+            if 'remaining_leaves' in lt._fields:
+                return lt.remaining_leaves or 0.0
+            return 0.0
 
-        # Gather earned leave type ids (name-based to match your setup)
+        all_types = self.env['hr.leave.type'].search([])
         earned_types = self.env['hr.leave.type'].search([
             '|', '|',
             ('name', '=ilike', 'Earned Leave (Full Pay)'),
             ('name', '=ilike', 'Earned Leave With Pay'),
             ('name', '=ilike', 'Earned Leave'),
         ])
-        earned_type_ids = set(earned_types.ids)
-
-        # Allocation sums by employee + leave type
-        alloc_groups = self.env['hr.leave.allocation'].read_group(
-            [('employee_id', 'in', employees.ids), ('state', '=', 'validate')],
-            ['employee_id', 'holiday_status_id', 'number_of_days:sum'],
-            ['employee_id', 'holiday_status_id'],
-            lazy=False,
-        )
-        # Leave sums by employee + leave type
-        leave_groups = self.env['hr.leave'].read_group(
-            [('employee_id', 'in', employees.ids), ('state', '=', 'validate')],
-            ['employee_id', 'holiday_status_id', 'number_of_days:sum'],
-            ['employee_id', 'holiday_status_id'],
-            lazy=False,
-        )
-
-        # Build dicts: sums[(emp_id, type_id)] = total_days
-        alloc_sum = {}
-        for g in alloc_groups:
-            emp = g.get('employee_id') and g['employee_id'][0]
-            lt = g.get('holiday_status_id') and g['holiday_status_id'][0]
-            if emp and lt:
-                alloc_sum[(emp, lt)] = g.get('number_of_days_sum') or 0.0
-
-        leave_sum = {}
-        for g in leave_groups:
-            emp = g.get('employee_id') and g['employee_id'][0]
-            lt = g.get('holiday_status_id') and g['holiday_status_id'][0]
-            if emp and lt:
-                leave_sum[(emp, lt)] = g.get('number_of_days_sum') or 0.0
-
-        # Compute per employee
-        total_by_emp = {e.id: 0.0 for e in employees}
-        earned_by_emp = {e.id: 0.0 for e in employees}
-
-        # Consider all type keys we saw in either allocations or leaves
-        all_keys = set(alloc_sum.keys()) | set(leave_sum.keys())
-        for (emp_id, type_id) in all_keys:
-            bal = (alloc_sum.get((emp_id, type_id), 0.0) - leave_sum.get((emp_id, type_id), 0.0))
-            if bal > 0:
-                total_by_emp[emp_id] = total_by_emp.get(emp_id, 0.0) + bal
-            if type_id in earned_type_ids:
-                earned_by_emp[emp_id] = earned_by_emp.get(emp_id, 0.0) + bal
 
         for leave in self:
-            emp_id = leave.employee_id.id if leave.employee_id else False
-            leave.employee_leave_balance_total = total_by_emp.get(emp_id, 0.0) if emp_id else 0.0
-            leave.employee_earned_leave_balance = earned_by_emp.get(emp_id, 0.0) if emp_id else 0.0
+            if not leave.employee_id:
+                leave.employee_leave_balance_total = 0.0
+                leave.employee_earned_leave_balance = 0.0
+                continue
+
+            total = 0.0
+            for lt in all_types:
+                rem = _remaining_for(lt, leave.employee_id)
+                if rem > 0:
+                    total += rem
+
+            earned_total = 0.0
+            for lt in earned_types:
+                rem = _remaining_for(lt, leave.employee_id)
+                if rem > 0:
+                    earned_total += rem
+
+            leave.employee_leave_balance_total = total
+            leave.employee_earned_leave_balance = earned_total
 
     @api.onchange('employee_id', 'holiday_status_id','hrmis_profile_id')
     def _onchange_employee_filter_leave_type(self):
