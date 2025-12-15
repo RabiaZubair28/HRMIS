@@ -171,38 +171,82 @@ class HrLeave(models.Model):
                     "from an approved Maternity or Medical leave."
                 )
 
-    @api.constrains('holiday_status_id', 'attachment_ids', 'state')
-    def _check_supporting_documents_required(self):
+    def _vals_include_any_attachment(self, vals):
+        """
+        Detect attachments being added in the same create/write call.
+        This avoids false negatives where constraints run before attachments are linked.
+        """
+        if not vals:
+            return False
+
+        # Explicit attachment fields
+        for key in ('supported_attachment_ids', 'attachment_ids', 'message_main_attachment_id'):
+            if key not in vals:
+                continue
+            v = vals.get(key)
+            if key == 'message_main_attachment_id':
+                return bool(v)
+
+            # m2m/o2m command list
+            if isinstance(v, (list, tuple)):
+                for cmd in v:
+                    if not isinstance(cmd, (list, tuple)) or not cmd:
+                        continue
+                    op = cmd[0]
+                    # (6, 0, [ids]) set
+                    if op == 6 and len(cmd) >= 3 and cmd[2]:
+                        return True
+                    # (4, id) link
+                    if op == 4 and len(cmd) >= 2 and cmd[1]:
+                        return True
+                    # (0, 0, values) create
+                    if op == 0:
+                        return True
+            elif v:
+                return True
+
+        return False
+
+    def _enforce_supporting_documents_required(self, incoming_vals=None):
         """
         Enforce supporting documents for leave types that require them.
+        Implemented as a post create/write check to avoid timing issues with
+        many2many_binary uploads (common with PDFs).
         """
         for leave in self:
             if not leave.holiday_status_id:
                 continue
-            # Only enforce for active workflow states (avoid blocking cancelled/refused history edits)
             if leave.state in ('cancel', 'refuse'):
                 continue
             if not leave.holiday_status_id.support_document:
                 continue
-            # Be permissive in where we count attachments from:
-            # - hr.leave's supporting widget (supported_attachment_ids)
-            # - hr.leave's attachment_ids
-            # - chatter/main attachments
-            # - any ir.attachment whose res_id matches (some setups don’t set res_model consistently)
-            has_attachment = bool(leave.supported_attachment_ids) or bool(leave.attachment_ids) \
-                or bool(leave.message_main_attachment_id) or bool(getattr(leave, 'message_attachment_count', 0))
 
-            if not has_attachment and leave.id:
-                any_res_id_match = self.env['ir.attachment'].sudo().search_count([
-                    ('res_id', '=', leave.id),
-                ])
-                has_attachment = any_res_id_match > 0
+            # If the attachment is being added in the same transaction, accept it.
+            if self._vals_include_any_attachment(incoming_vals or {}):
+                continue
 
-            if not has_attachment:
+            # Otherwise, verify there is at least one persisted attachment linked to this leave.
+            count = self.env['ir.attachment'].sudo().search_count([
+                ('res_model', '=', 'hr.leave'),
+                ('res_id', '=', leave.id),
+            ])
+            if count <= 0:
                 raise ValidationError(
                     "A supporting document is required for this Time Off Type. "
                     "Please attach the required document before submitting."
                 )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        leaves = super().create(vals_list)
+        for leave, vals in zip(leaves, vals_list):
+            leave._enforce_supporting_documents_required(vals)
+        return leaves
+
+    def write(self, vals):
+        res = super().write(vals)
+        self._enforce_supporting_documents_required(vals)
+        return res
     
 
 
