@@ -116,28 +116,33 @@ class HrLeave(models.Model):
             delta = relativedelta(ref_date, joining_date)
             leave.employee_service_months = delta.years * 12 + delta.months
 
-    @api.depends('employee_id')
+    def _get_leave_type_remaining(self, leave_type, employee, ref_date=None):
+        """
+        Return remaining days for a leave type for a given employee, using the same
+        computed fields Odoo shows in the UI ("X remaining out of Y").
+        """
+        ref_date = fields.Date.to_date(ref_date or fields.Date.today())
+        lt = leave_type.with_context(
+            employee_id=employee.id,
+            default_employee_id=employee.id,
+            default_date_from=ref_date,
+            default_date_to=ref_date,
+        )
+        if 'virtual_remaining_leaves' in lt._fields:
+            return lt.virtual_remaining_leaves or 0.0
+        if 'remaining_leaves' in lt._fields:
+            return lt.remaining_leaves or 0.0
+        return 0.0
+
+    @api.depends('employee_id', 'request_date_from')
     def _compute_employee_leave_balances(self):
         """
         Compute leave balances using Odoo's own leave type balance computation (same as UI),
         so it matches accrual plans and validity rules.
         """
-        def _remaining_for(leave_type, employee):
-            lt = leave_type.with_context(employee_id=employee.id, default_employee_id=employee.id)
-            # Prefer the same value used in the UI dropdown ("remaining out of")
-            if 'virtual_remaining_leaves' in lt._fields:
-                return lt.virtual_remaining_leaves or 0.0
-            if 'remaining_leaves' in lt._fields:
-                return lt.remaining_leaves or 0.0
-            return 0.0
-
         all_types = self.env['hr.leave.type'].search([])
-        earned_types = self.env['hr.leave.type'].search([
-            '|', '|',
-            ('name', '=ilike', 'Earned Leave (Full Pay)'),
-            ('name', '=ilike', 'Earned Leave With Pay'),
-            ('name', '=ilike', 'Earned Leave'),
-        ])
+        # Be tolerant to naming variations (e.g. "Earned Leave (Full Pay)", "Earned Leave With Pay", etc.)
+        earned_types = self.env['hr.leave.type'].search([('name', 'ilike', 'Earned Leave')])
 
         for leave in self:
             if not leave.employee_id:
@@ -147,13 +152,13 @@ class HrLeave(models.Model):
 
             total = 0.0
             for lt in all_types:
-                rem = _remaining_for(lt, leave.employee_id)
+                rem = leave._get_leave_type_remaining(lt, leave.employee_id, leave.request_date_from)
                 if rem > 0:
                     total += rem
 
             earned_total = 0.0
             for lt in earned_types:
-                rem = _remaining_for(lt, leave.employee_id)
+                rem = leave._get_leave_type_remaining(lt, leave.employee_id, leave.request_date_from)
                 if rem > 0:
                     earned_total += rem
 
@@ -260,15 +265,35 @@ class HrLeave(models.Model):
                 continue
 
             lt_name = (leave.holiday_status_id.name or '').strip().lower()
-            if lt_name == 'ex-pakistan leave' and (leave.employee_leave_balance_total or 0.0) <= 0.0:
-                raise ValidationError(
-                    "Ex-Pakistan Leave is only applicable to employees who have a leave balance."
-                )
+            if lt_name == 'ex-pakistan leave':
+                total_bal = leave.employee_leave_balance_total
+                if total_bal <= 0.0:
+                    # Fallback compute (avoid any UI cache surprises)
+                    all_types = self.env['hr.leave.type'].search([])
+                    ref = leave.request_date_from or fields.Date.today()
+                    total_bal = sum(
+                        max(0.0, leave._get_leave_type_remaining(t, leave.employee_id, ref))
+                        for t in all_types
+                    )
+                if total_bal <= 0.0:
+                    raise ValidationError(
+                        "Ex-Pakistan Leave is only applicable to employees who have a leave balance."
+                    )
 
-            if lt_name in ('leave preparatory to retirement (lpr)', 'lpr') and (leave.employee_earned_leave_balance or 0.0) <= 0.0:
-                raise ValidationError(
-                    "LPR is only applicable to employees who have an Earned Leave balance."
-                )
+            if lt_name in ('leave preparatory to retirement (lpr)', 'lpr'):
+                earned_bal = leave.employee_earned_leave_balance
+                if earned_bal <= 0.0:
+                    # Fallback compute using tolerant earned-leave name match
+                    ref = leave.request_date_from or fields.Date.today()
+                    earned_types = self.env['hr.leave.type'].search([('name', 'ilike', 'Earned Leave')])
+                    earned_bal = sum(
+                        max(0.0, leave._get_leave_type_remaining(t, leave.employee_id, ref))
+                        for t in earned_types
+                    )
+                if earned_bal <= 0.0:
+                    raise ValidationError(
+                        "LPR is only applicable to employees who have an Earned Leave balance."
+                    )
 
     def _vals_include_any_attachment(self, vals):
         """
