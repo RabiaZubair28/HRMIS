@@ -334,6 +334,9 @@ class HrLeave(models.Model):
         Implemented as a post create/write check to avoid timing issues with
         many2many_binary uploads (common with PDFs).
         """
+        # TEMPORARILY DISABLED (per request): supporting documents enforcement
+        # to allow testing of other eligibility rules without being blocked.
+        return
         for leave in self:
             if not leave.holiday_status_id:
                 continue
