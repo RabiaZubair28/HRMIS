@@ -22,6 +22,27 @@ class HrLeaveType(models.Model):
         help="Minimum length of service required to request this leave type, based on employee joining date.",
     )
 
+    max_days_per_request = fields.Float(
+        string="Max Duration Per Request (Days)",
+        default=0.0,
+        help="Maximum number of days allowed in a single request for this leave type. 0 means no limit.",
+    )
+    max_days_per_month = fields.Float(
+        string="Max Duration Per Month (Days)",
+        default=0.0,
+        help="Maximum total days allowed per calendar month for this leave type. 0 means no limit.",
+    )
+    max_days_per_year = fields.Float(
+        string="Max Duration Per Year (Days)",
+        default=0.0,
+        help="Maximum total days allowed per calendar year for this leave type. 0 means no limit.",
+    )
+    max_times_in_service = fields.Integer(
+        string="Max Times In Service",
+        default=0,
+        help="Maximum number of times this leave type can be taken over the employee's service. 0 means no limit.",
+    )
+
     @api.model
     def apply_support_document_rules(self):
         """
@@ -72,6 +93,46 @@ class HrLeaveType(models.Model):
             if not leave_types:
                 continue
             leave_types.write({'min_service_months': months})
+
+    @api.model
+    def apply_max_duration_rules(self):
+        """
+        Apply max-duration defaults based on the policy table.
+        Safe to run on every module upgrade.
+        """
+        rules = {
+            # Casual Leave: 2 days/month OR 24 days/year
+            "Casual Leave (CL)": {"max_days_per_month": 2.0, "max_days_per_year": 24.0},
+            "Casual Leave": {"max_days_per_month": 2.0, "max_days_per_year": 24.0},
+
+            # Earned Leave (Full Pay): 48 days/year
+            "Earned Leave (Full Pay)": {"max_days_per_year": 48.0},
+            "Earned Leave With Pay": {"max_days_per_year": 48.0},
+            "Earned Leave": {"max_days_per_year": 48.0},
+
+            # Leave on Half Pay: 20 days/year (per provided table)
+            "Leave On Half Pay": {"max_days_per_year": 20.0},
+            "Leave on Half Pay": {"max_days_per_year": 20.0},
+
+            # Maternity: 90 days per request, max 3 times in service
+            "Maternity Leave": {"max_days_per_request": 90.0, "max_times_in_service": 3},
+
+            # Paternity: 7 days per request, max 2 times in service
+            "Paternity Leave": {"max_days_per_request": 7.0, "max_times_in_service": 2},
+
+            # Study Leave: up to 2 years (extendable by 1) => 3 years max
+            "Study Leave": {"max_days_per_request": 1095.0},
+
+            # LPR: max 365 days (also effectively once)
+            "Leave Preparatory to Retirement (LPR)": {"max_days_per_request": 365.0, "max_times_in_service": 1},
+            "LPR": {"max_days_per_request": 365.0, "max_times_in_service": 1},
+        }
+
+        for leave_type_name, vals in rules.items():
+            leave_types = self.search([('name', '=ilike', leave_type_name)])
+            if not leave_types:
+                continue
+            leave_types.write(vals)
 
     # Example: override a method (keep original functionality)
     def _check_allocation(self, employee_id, request_date_from, request_date_to):

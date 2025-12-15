@@ -247,6 +247,84 @@ class HrLeave(models.Model):
         res = super().write(vals)
         self._enforce_supporting_documents_required(vals)
         return res
+
+    def _period_bounds(self, ref_date, period):
+        """
+        Return (start_date, end_date) for the calendar month/year of ref_date.
+        """
+        ref_date = fields.Date.to_date(ref_date or fields.Date.today())
+        if period == 'month':
+            start = ref_date.replace(day=1)
+            end = start + relativedelta(months=1, days=-1)
+            return start, end
+        if period == 'year':
+            start = ref_date.replace(month=1, day=1)
+            end = ref_date.replace(month=12, day=31)
+            return start, end
+        return None, None
+
+    @api.constrains('employee_id', 'holiday_status_id', 'request_date_from', 'request_date_to', 'number_of_days', 'state')
+    def _check_max_duration_rules(self):
+        for leave in self:
+            if not leave.employee_id or not leave.holiday_status_id:
+                continue
+            if leave.state in ('cancel', 'refuse'):
+                continue
+
+            lt = leave.holiday_status_id
+            days = leave.number_of_days or 0.0
+            ref = leave.request_date_from or fields.Date.today()
+
+            # Per-request maximum
+            if lt.max_days_per_request and days > lt.max_days_per_request:
+                raise ValidationError(
+                    f"Maximum duration for this Time Off Type is {lt.max_days_per_request} day(s) per request."
+                )
+
+            # Times in service (count non-cancel/refused to prevent bypass with multiple pending)
+            if lt.max_times_in_service:
+                taken_count = self.search_count([
+                    ('employee_id', '=', leave.employee_id.id),
+                    ('holiday_status_id', '=', lt.id),
+                    ('state', 'not in', ('cancel', 'refuse')),
+                    ('id', '!=', leave.id),
+                ]) + 1
+                if taken_count > lt.max_times_in_service:
+                    raise ValidationError(
+                        f"This Time Off Type can be taken at most {lt.max_times_in_service} time(s) in service."
+                    )
+
+            # Per-month maximum (based on request start month)
+            if lt.max_days_per_month:
+                start, end = leave._period_bounds(ref, 'month')
+                used = sum(self.search([
+                    ('employee_id', '=', leave.employee_id.id),
+                    ('holiday_status_id', '=', lt.id),
+                    ('state', 'not in', ('cancel', 'refuse')),
+                    ('id', '!=', leave.id),
+                    ('request_date_from', '>=', start),
+                    ('request_date_from', '<=', end),
+                ]).mapped('number_of_days')) or 0.0
+                if used + days > lt.max_days_per_month:
+                    raise ValidationError(
+                        f"Maximum duration for this Time Off Type is {lt.max_days_per_month} day(s) per month."
+                    )
+
+            # Per-year maximum (based on request start year)
+            if lt.max_days_per_year:
+                start, end = leave._period_bounds(ref, 'year')
+                used = sum(self.search([
+                    ('employee_id', '=', leave.employee_id.id),
+                    ('holiday_status_id', '=', lt.id),
+                    ('state', 'not in', ('cancel', 'refuse')),
+                    ('id', '!=', leave.id),
+                    ('request_date_from', '>=', start),
+                    ('request_date_from', '<=', end),
+                ]).mapped('number_of_days')) or 0.0
+                if used + days > lt.max_days_per_year:
+                    raise ValidationError(
+                        f"Maximum duration for this Time Off Type is {lt.max_days_per_year} day(s) per year."
+                    )
     
 
 
