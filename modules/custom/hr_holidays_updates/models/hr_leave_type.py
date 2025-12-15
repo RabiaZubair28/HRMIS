@@ -134,18 +134,10 @@ class HrLeaveType(models.Model):
                 continue
             leave_types.write(vals)
 
-    @api.model
-    def apply_skip_allocation_rules(self):
-        """
-        Allow employees to request leaves without prior allocations.
-        This sets requires_allocation='no' on all leave types (safe on upgrade).
-        """
-        self.search([]).write({'requires_allocation': 'no'})
-
     # Example: override a method (keep original functionality)
     def _check_allocation(self, employee_id, request_date_from, request_date_to):
-        res = super()._check_allocation(employee_id, request_date_from, request_date_to)
-        # Add your custom validation logic here
-        return res
+        # Skip allocation requirement: allow requesting leaves without allocations.
+        # This avoids changing `requires_allocation` on existing leave types (Odoo blocks that if already used).
+        return True
     
    
