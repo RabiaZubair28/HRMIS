@@ -32,7 +32,7 @@ class HrLeaveType(models.Model):
             # User-requested rules
             "Leave Without Pay (EOL)": "Written request should be given.",
             "Leave Without Pay": "Written request should be given.",
-            "Ex-Pakistan Leave": "Required: Government Permission Letter (NOC).",
+            "Ex-Pakistan Leave": "Government Permission Letter.",
             "Special Leave (Accident/Injury)": "Medical Certificate.",
             "Special Leave (Accident / Injury)": "Medical Certificate.",
             "Special Leave (Quarantine)": "Quarantine order.",
