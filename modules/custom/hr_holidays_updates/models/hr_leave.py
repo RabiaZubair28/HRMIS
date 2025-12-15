@@ -123,11 +123,16 @@ class HrLeave(models.Model):
                 continue
             if not leave.holiday_status_id.support_document:
                 continue
-            # Attachments can be stored via the "Supporting Document" widget
-            # (supported_attachment_ids), via main attachments (attachment_ids),
-            # or via chatter (message_* attachments). Accept any of them.
-            has_attachment = bool(leave.supported_attachment_ids) or bool(leave.attachment_ids) \
-                or bool(leave.message_main_attachment_id) or bool(getattr(leave, 'message_attachment_count', 0))
+            # Reliable check: look for any ir.attachment linked to this leave.
+            # This covers supporting-document widget, chatter attachments, and any other attachment path.
+            attachment_count = 0
+            if leave.id:
+                attachment_count = self.env['ir.attachment'].sudo().search_count([
+                    ('res_model', '=', 'hr.leave'),
+                    ('res_id', '=', leave.id),
+                ])
+
+            has_attachment = attachment_count > 0
             if not has_attachment:
                 raise ValidationError(
                     "A supporting document is required for this Time Off Type. "
