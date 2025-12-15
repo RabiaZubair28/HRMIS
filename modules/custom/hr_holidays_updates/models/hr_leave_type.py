@@ -134,6 +134,14 @@ class HrLeaveType(models.Model):
                 continue
             leave_types.write(vals)
 
+    @api.model
+    def apply_skip_allocation_rules(self):
+        """
+        Allow employees to request leaves without prior allocations.
+        This sets requires_allocation='no' on all leave types (safe on upgrade).
+        """
+        self.search([]).write({'requires_allocation': 'no'})
+
     # Example: override a method (keep original functionality)
     def _check_allocation(self, employee_id, request_date_from, request_date_to):
         res = super()._check_allocation(employee_id, request_date_from, request_date_to)

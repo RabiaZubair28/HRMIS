@@ -6,5 +6,7 @@
     <function model="hr.leave.type" name="apply_service_eligibility_rules"/>
     <!-- Apply/refresh max duration rules on module upgrade -->
     <function model="hr.leave.type" name="apply_max_duration_rules"/>
+    <!-- Allow requests without allocations -->
+    <function model="hr.leave.type" name="apply_skip_allocation_rules"/>
 </odoo>
 
