@@ -72,6 +72,10 @@
                        invisible="not support_document"
                        placeholder="e.g. Medical Certificate / Government Permission Letter"/>
                 <field name="min_service_months"/>
+                <field name="max_days_per_request"/>
+                <field name="max_days_per_month"/>
+                <field name="max_days_per_year"/>
+                <field name="max_times_in_service"/>
             </xpath>
         </field>
     </record>
