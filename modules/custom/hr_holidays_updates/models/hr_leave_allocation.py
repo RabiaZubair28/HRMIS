@@ -24,10 +24,11 @@ class HrLeaveAllocation(models.Model):
         for alloc in self:
             alloc.employee_gender = alloc.employee_id.hrmis_gender or alloc.employee_id.gender or False
 
-    @api.depends('employee_id', 'employee_id.hrmis_joining_date', 'employee_id.joining_date', 'date_from')
+    @api.depends('employee_id', 'employee_id.hrmis_joining_date', 'date_from')
     def _compute_employee_service_months(self):
         for alloc in self:
-            joining_date = alloc.employee_id.hrmis_joining_date or getattr(alloc.employee_id, 'joining_date', False)
+            # Use HRMIS joining date (available via hrmis_user_profiles_updates)
+            joining_date = alloc.employee_id.hrmis_joining_date
             ref_date = alloc.date_from or fields.Date.today()
             if not joining_date or not ref_date:
                 alloc.employee_service_months = 0

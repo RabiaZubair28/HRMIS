@@ -45,10 +45,11 @@ class HrLeave(models.Model):
         for leave in self:
             leave.employee_gender = leave.employee_id.hrmis_gender or leave.employee_id.gender or False
 
-    @api.depends('employee_id', 'employee_id.hrmis_joining_date', 'employee_id.joining_date', 'request_date_from')
+    @api.depends('employee_id', 'employee_id.hrmis_joining_date', 'request_date_from')
     def _compute_employee_service_months(self):
         for leave in self:
-            joining_date = leave.employee_id.hrmis_joining_date or getattr(leave.employee_id, 'joining_date', False)
+            # Use HRMIS joining date (available via hrmis_user_profiles_updates)
+            joining_date = leave.employee_id.hrmis_joining_date
             ref_date = leave.request_date_from or fields.Date.today()
             if not joining_date or not ref_date:
                 leave.employee_service_months = 0
