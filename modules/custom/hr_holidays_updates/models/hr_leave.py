@@ -43,6 +43,20 @@ class HrLeave(models.Model):
         readonly=True,
     )
 
+    employee_leave_balance_total = fields.Float(
+        string="Total Leave Balance (Days)",
+        compute="_compute_employee_leave_balances",
+        readonly=True,
+        help="Approximate total available leave balance across all leave types (validated allocations - validated leaves).",
+    )
+
+    employee_earned_leave_balance = fields.Float(
+        string="Earned Leave Balance (Days)",
+        compute="_compute_employee_leave_balances",
+        readonly=True,
+        help="Approximate available balance for Earned Leave (validated allocations - validated leaves).",
+    )
+
     @api.depends('employee_id', 'employee_id.hrmis_gender', 'employee_id.gender')
     def _compute_employee_gender(self):
         """
@@ -98,6 +112,76 @@ class HrLeave(models.Model):
             delta = relativedelta(ref_date, joining_date)
             leave.employee_service_months = delta.years * 12 + delta.months
 
+    @api.depends('employee_id')
+    def _compute_employee_leave_balances(self):
+        """
+        Compute approximate leave balances from validated allocations and validated leaves.
+        This intentionally ignores edge cases (accrual calendars, validity periods) unless your policy needs them.
+        """
+        employees = self.mapped('employee_id')
+        if not employees:
+            for leave in self:
+                leave.employee_leave_balance_total = 0.0
+                leave.employee_earned_leave_balance = 0.0
+            return
+
+        # Gather earned leave type ids (name-based to match your setup)
+        earned_types = self.env['hr.leave.type'].search([
+            '|', '|',
+            ('name', '=ilike', 'Earned Leave (Full Pay)'),
+            ('name', '=ilike', 'Earned Leave With Pay'),
+            ('name', '=ilike', 'Earned Leave'),
+        ])
+        earned_type_ids = set(earned_types.ids)
+
+        # Allocation sums by employee + leave type
+        alloc_groups = self.env['hr.leave.allocation'].read_group(
+            [('employee_id', 'in', employees.ids), ('state', '=', 'validate')],
+            ['employee_id', 'holiday_status_id', 'number_of_days:sum'],
+            ['employee_id', 'holiday_status_id'],
+            lazy=False,
+        )
+        # Leave sums by employee + leave type
+        leave_groups = self.env['hr.leave'].read_group(
+            [('employee_id', 'in', employees.ids), ('state', '=', 'validate')],
+            ['employee_id', 'holiday_status_id', 'number_of_days:sum'],
+            ['employee_id', 'holiday_status_id'],
+            lazy=False,
+        )
+
+        # Build dicts: sums[(emp_id, type_id)] = total_days
+        alloc_sum = {}
+        for g in alloc_groups:
+            emp = g.get('employee_id') and g['employee_id'][0]
+            lt = g.get('holiday_status_id') and g['holiday_status_id'][0]
+            if emp and lt:
+                alloc_sum[(emp, lt)] = g.get('number_of_days_sum') or 0.0
+
+        leave_sum = {}
+        for g in leave_groups:
+            emp = g.get('employee_id') and g['employee_id'][0]
+            lt = g.get('holiday_status_id') and g['holiday_status_id'][0]
+            if emp and lt:
+                leave_sum[(emp, lt)] = g.get('number_of_days_sum') or 0.0
+
+        # Compute per employee
+        total_by_emp = {e.id: 0.0 for e in employees}
+        earned_by_emp = {e.id: 0.0 for e in employees}
+
+        # Consider all type keys we saw in either allocations or leaves
+        all_keys = set(alloc_sum.keys()) | set(leave_sum.keys())
+        for (emp_id, type_id) in all_keys:
+            bal = (alloc_sum.get((emp_id, type_id), 0.0) - leave_sum.get((emp_id, type_id), 0.0))
+            if bal > 0:
+                total_by_emp[emp_id] = total_by_emp.get(emp_id, 0.0) + bal
+            if type_id in earned_type_ids:
+                earned_by_emp[emp_id] = earned_by_emp.get(emp_id, 0.0) + bal
+
+        for leave in self:
+            emp_id = leave.employee_id.id if leave.employee_id else False
+            leave.employee_leave_balance_total = total_by_emp.get(emp_id, 0.0) if emp_id else 0.0
+            leave.employee_earned_leave_balance = earned_by_emp.get(emp_id, 0.0) if emp_id else 0.0
+
     @api.onchange('employee_id', 'holiday_status_id','hrmis_profile_id')
     def _onchange_employee_filter_leave_type(self):
         if not self.employee_id:
@@ -119,6 +203,20 @@ class HrLeave(models.Model):
         fitness_type = self.env['hr.leave.type'].search([('name', '=ilike', 'Fitness To Resume Duty')], limit=1)
         if fitness_type and not self.fitness_resume_duty_eligible:
             domain += [('id', '!=', fitness_type.id)]
+
+        # Ex-Pakistan: only if employee has any leave balance
+        ex_pk = self.env['hr.leave.type'].search([('name', '=ilike', 'Ex-Pakistan Leave')], limit=1)
+        if ex_pk and (self.employee_leave_balance_total or 0.0) <= 0.0:
+            domain += [('id', '!=', ex_pk.id)]
+
+        # LPR: only if employee has earned leave balance
+        lpr = self.env['hr.leave.type'].search([
+            '|',
+            ('name', '=ilike', 'Leave Preparatory to Retirement (LPR)'),
+            ('name', '=ilike', 'LPR'),
+        ], limit=1)
+        if lpr and (self.employee_earned_leave_balance or 0.0) <= 0.0:
+            domain += [('id', '!=', lpr.id)]
 
         return {'domain': {'holiday_status_id': domain}}
 
@@ -169,6 +267,29 @@ class HrLeave(models.Model):
                 raise ValidationError(
                     "Fitness To Resume Duty is only applicable if the employee has just returned "
                     "from an approved Maternity or Medical leave."
+                )
+
+    @api.constrains('employee_id', 'holiday_status_id', 'state')
+    def _check_leave_balance_prereqs(self):
+        """
+        - Ex-Pakistan Leave requires employee to have some leave balance overall.
+        - LPR requires employee to have Earned Leave balance.
+        """
+        for leave in self:
+            if not leave.employee_id or not leave.holiday_status_id:
+                continue
+            if leave.state in ('cancel', 'refuse'):
+                continue
+
+            lt_name = (leave.holiday_status_id.name or '').strip().lower()
+            if lt_name == 'ex-pakistan leave' and (leave.employee_leave_balance_total or 0.0) <= 0.0:
+                raise ValidationError(
+                    "Ex-Pakistan Leave is only applicable to employees who have a leave balance."
+                )
+
+            if lt_name in ('leave preparatory to retirement (lpr)', 'lpr') and (leave.employee_earned_leave_balance or 0.0) <= 0.0:
+                raise ValidationError(
+                    "LPR is only applicable to employees who have an Earned Leave balance."
                 )
 
     def _vals_include_any_attachment(self, vals):
