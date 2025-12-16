@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Apply/refresh supporting document rules on module upgrade -->
+    <function model="hr.leave.type" name="apply_support_document_rules"/>
+    <!-- Apply/refresh service eligibility rules on module upgrade -->
+    <function model="hr.leave.type" name="apply_service_eligibility_rules"/>
+    <!-- Apply/refresh max duration rules on module upgrade -->
+    <function model="hr.leave.type" name="apply_max_duration_rules"/>
+</odoo>
+
