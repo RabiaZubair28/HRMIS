@@ -75,6 +75,7 @@
                 <field name="max_days_per_month"/>
                 <field name="max_days_per_year"/>
                 <field name="max_times_in_service"/>
+                <field name="auto_allocate"/>
             </xpath>
         </field>
     </record>

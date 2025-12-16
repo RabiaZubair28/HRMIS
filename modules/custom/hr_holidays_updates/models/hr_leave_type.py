@@ -43,6 +43,12 @@ class HrLeaveType(models.Model):
         help="Maximum number of times this leave type can be taken over the employee's service. 0 means no limit.",
     )
 
+    auto_allocate = fields.Boolean(
+        string="Auto Allocate By Policy",
+        default=False,
+        help="If enabled, the system will create validated allocations automatically (e.g. monthly CL).",
+    )
+
     @api.model
     def apply_support_document_rules(self):
         """
@@ -102,8 +108,8 @@ class HrLeaveType(models.Model):
         """
         rules = {
             # Casual Leave: 2 days/month OR 24 days/year
-            "Casual Leave (CL)": {"max_days_per_month": 2.0, "max_days_per_year": 24.0},
-            "Casual Leave": {"max_days_per_month": 2.0, "max_days_per_year": 24.0},
+            "Casual Leave (CL)": {"max_days_per_month": 2.0, "max_days_per_year": 24.0, "auto_allocate": True},
+            "Casual Leave": {"max_days_per_month": 2.0, "max_days_per_year": 24.0, "auto_allocate": True},
 
             # Earned Leave (Full Pay): 48 days/year (accrues separately; this is a request cap)
             "Earned Leave (Full Pay)": {"max_days_per_year": 48.0},
@@ -134,10 +140,8 @@ class HrLeaveType(models.Model):
                 continue
             leave_types.write(vals)
 
-    # Example: override a method (keep original functionality)
     def _check_allocation(self, employee_id, request_date_from, request_date_to):
-        # Skip allocation requirement: allow requesting leaves without allocations.
-        # This avoids changing `requires_allocation` on existing leave types (Odoo blocks that if already used).
-        return True
+        # Restore standard Odoo allocation validation.
+        return super()._check_allocation(employee_id, request_date_from, request_date_to)
     
    

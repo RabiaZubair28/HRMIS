@@ -5,10 +5,6 @@ from dateutil.relativedelta import relativedelta
 class HrLeave(models.Model):
     _inherit = 'hr.leave'
 
-    # Allow requesting leave types even if no allocations exist (skip allocation gating).
-    # This overrides the base field domain which normally hides types requiring allocation.
-    holiday_status_id = fields.Many2one(domain="[('company_id', 'in', [employee_company_id, False])]")
-
     hrmis_profile_id = fields.Many2one(
         'hrmis.user.profile',
         string="HRMIS Profile",
