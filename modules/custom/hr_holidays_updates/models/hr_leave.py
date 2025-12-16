@@ -57,6 +57,13 @@ class HrLeave(models.Model):
         help="Approximate available balance for Earned Leave (validated allocations - validated leaves).",
     )
 
+    employee_eol_leave_balance = fields.Float(
+        string="EOL Leave Balance (Days)",
+        compute="_compute_employee_leave_balances",
+        readonly=True,
+        help="Available balance for Leave Without Pay (EOL), computed using Odoo's leave balance engine.",
+    )
+
     @api.depends('employee_id', 'employee_id.hrmis_gender', 'employee_id.gender')
     def _compute_employee_gender(self):
         """
@@ -151,13 +158,20 @@ class HrLeave(models.Model):
         so it matches accrual plans and validity rules.
         """
         all_types = self.env['hr.leave.type'].search([])
-        # Be tolerant to naming variations (e.g. "Earned Leave (Full Pay)", "Earned Leave With Pay", etc.)
+        # Be tolerant to naming variations for Earned Leave (kept for other rules/UI)
         earned_types = self.env['hr.leave.type'].search([('name', 'ilike', 'Earned Leave')])
+        # EOL leave type(s)
+        eol_types = self.env['hr.leave.type'].search([
+            '|',
+            ('name', 'ilike', 'EOL'),
+            ('name', 'ilike', 'Leave Without Pay'),
+        ])
 
         for leave in self:
             if not leave.employee_id:
                 leave.employee_leave_balance_total = 0.0
                 leave.employee_earned_leave_balance = 0.0
+                leave.employee_eol_leave_balance = 0.0
                 continue
 
             total = 0.0
@@ -172,8 +186,15 @@ class HrLeave(models.Model):
                 if rem > 0:
                     earned_total += rem
 
+            eol_total = 0.0
+            for lt in eol_types:
+                rem = leave._get_leave_type_remaining(lt, leave.employee_id, leave.request_date_from)
+                if rem > 0:
+                    eol_total += rem
+
             leave.employee_leave_balance_total = total
             leave.employee_earned_leave_balance = earned_total
+            leave.employee_eol_leave_balance = eol_total
 
     @api.onchange('employee_id', 'holiday_status_id','hrmis_profile_id')
     def _onchange_employee_filter_leave_type(self):
@@ -208,7 +229,8 @@ class HrLeave(models.Model):
             ('name', '=ilike', 'Leave Preparatory to Retirement (LPR)'),
             ('name', '=ilike', 'LPR'),
         ], limit=1)
-        if lpr and (self.employee_earned_leave_balance or 0.0) <= 0.0:
+        # Per latest rule: LPR requires EOL leave balance (not earned leave)
+        if lpr and (self.employee_eol_leave_balance or 0.0) <= 0.0:
             domain += [('id', '!=', lpr.id)]
 
         return {'domain': {'holiday_status_id': domain}}
@@ -290,14 +312,18 @@ class HrLeave(models.Model):
 
             if lt_name in ('leave preparatory to retirement (lpr)', 'lpr'):
                 ref = leave.request_date_from or fields.Date.today()
-                earned_types = self.env['hr.leave.type'].search([('name', 'ilike', 'Earned Leave')])
-                earned_bal = sum(
+                eol_types = self.env['hr.leave.type'].search([
+                    '|',
+                    ('name', 'ilike', 'EOL'),
+                    ('name', 'ilike', 'Leave Without Pay'),
+                ])
+                eol_bal = sum(
                     max(0.0, leave._get_leave_type_remaining(t, leave.employee_id, ref))
-                    for t in earned_types
+                    for t in eol_types
                 )
-                if earned_bal <= 0.0:
+                if eol_bal <= 0.0:
                     raise ValidationError(
-                        "LPR is only applicable to employees who have an Earned Leave balance."
+                        "LPR is only applicable to employees who have a Leave Without Pay (EOL) balance."
                     )
 
     def _vals_include_any_attachment(self, vals):
