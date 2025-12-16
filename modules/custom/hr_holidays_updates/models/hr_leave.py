@@ -123,7 +123,21 @@ class HrLeave(models.Model):
             default_employee_id=employee.id,
             default_date_from=ref_date,
             default_date_to=ref_date,
+            request_type='leave',
         )
+        # Prefer the same server method used by Odoo to compute balances when available.
+        if hasattr(lt, 'get_days'):
+            try:
+                days = lt.get_days(employee.id)
+                if isinstance(days, dict) and employee.id in days and isinstance(days[employee.id], dict):
+                    return (
+                        days[employee.id].get('virtual_remaining_leaves')
+                        if days[employee.id].get('virtual_remaining_leaves') is not None
+                        else days[employee.id].get('remaining_leaves', 0.0)
+                    ) or 0.0
+            except Exception:
+                # Fall back to computed fields below
+                pass
         if 'virtual_remaining_leaves' in lt._fields:
             return lt.virtual_remaining_leaves or 0.0
         if 'remaining_leaves' in lt._fields:
@@ -262,30 +276,25 @@ class HrLeave(models.Model):
 
             lt_name = (leave.holiday_status_id.name or '').strip().lower()
             if lt_name == 'ex-pakistan leave':
-                total_bal = leave.employee_leave_balance_total
-                if total_bal <= 0.0:
-                    # Fallback compute (avoid any UI cache surprises)
-                    all_types = self.env['hr.leave.type'].search([])
-                    ref = leave.request_date_from or fields.Date.today()
-                    total_bal = sum(
-                        max(0.0, leave._get_leave_type_remaining(t, leave.employee_id, ref))
-                        for t in all_types
-                    )
+                # Compute on demand (avoid stale computed fields)
+                all_types = self.env['hr.leave.type'].search([])
+                ref = leave.request_date_from or fields.Date.today()
+                total_bal = sum(
+                    max(0.0, leave._get_leave_type_remaining(t, leave.employee_id, ref))
+                    for t in all_types
+                )
                 if total_bal <= 0.0:
                     raise ValidationError(
                         "Ex-Pakistan Leave is only applicable to employees who have a leave balance."
                     )
 
             if lt_name in ('leave preparatory to retirement (lpr)', 'lpr'):
-                earned_bal = leave.employee_earned_leave_balance
-                if earned_bal <= 0.0:
-                    # Fallback compute using tolerant earned-leave name match
-                    ref = leave.request_date_from or fields.Date.today()
-                    earned_types = self.env['hr.leave.type'].search([('name', 'ilike', 'Earned Leave')])
-                    earned_bal = sum(
-                        max(0.0, leave._get_leave_type_remaining(t, leave.employee_id, ref))
-                        for t in earned_types
-                    )
+                ref = leave.request_date_from or fields.Date.today()
+                earned_types = self.env['hr.leave.type'].search([('name', 'ilike', 'Earned Leave')])
+                earned_bal = sum(
+                    max(0.0, leave._get_leave_type_remaining(t, leave.employee_id, ref))
+                    for t in earned_types
+                )
                 if earned_bal <= 0.0:
                     raise ValidationError(
                         "LPR is only applicable to employees who have an Earned Leave balance."
