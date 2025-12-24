@@ -14,7 +14,56 @@ def _safe_int(v, default=None):
         return default
 
 
+def _current_employee():
+    """Best-effort mapping from logged-in user -> hr.employee."""
+    return (
+        request.env["hr.employee"]
+        .sudo()
+        .search([("user_id", "=", request.env.user.id)], limit=1)
+    )
+
+
 class HrmisLeaveFrontendController(http.Controller):
+    # -------------------------------------------------------------------------
+    # Odoo Time Off default URLs (override to render the custom UI)
+    # -------------------------------------------------------------------------
+    @http.route(
+        ["/odoo/time-off-overview"], type="http", auth="user", website=True
+    )
+    def odoo_time_off_overview(self, **kw):
+        # Render the same HRMIS "Services" dashboard at the Odoo URL.
+        return request.render(
+            "hr_holidays_updates.hrmis_services",
+            {
+                "page_title": "Services",
+                "active_menu": "services",
+            },
+        )
+
+    @http.route(["/odoo/my-time-off"], type="http", auth="user", website=True)
+    def odoo_my_time_off(self, **kw):
+        emp = _current_employee()
+        if not emp:
+            return request.render(
+                "hr_holidays_updates.hrmis_services",
+                {
+                    "page_title": "My Time Off",
+                    "active_menu": "services",
+                },
+            )
+        # Default to history tab (matches "My Time Off")
+        return self.hrmis_leave_form(emp.id, tab="history", **kw)
+
+    @http.route(
+        ["/odoo/my-time-off/new"], type="http", auth="user", website=True
+    )
+    def odoo_my_time_off_new(self, **kw):
+        emp = _current_employee()
+        if not emp:
+            return request.redirect("/odoo/my-time-off")
+        # Default to new request tab (matches "New Time Off")
+        return self.hrmis_leave_form(emp.id, tab="new", **kw)
+
     @http.route(["/hrmis", "/hrmis/"], type="http", auth="user", website=True)
     def hrmis_root(self, **kw):
         return request.redirect("/hrmis/services")
