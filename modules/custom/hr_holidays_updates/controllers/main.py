@@ -23,6 +23,17 @@ def _current_employee():
     )
 
 
+def _base_ctx(page_title: str, active_menu: str, **extra):
+    ctx = {
+        "page_title": page_title,
+        "active_menu": active_menu,
+        # Used by the global layout for profile links
+        "current_employee": _current_employee(),
+    }
+    ctx.update(extra)
+    return ctx
+
+
 class HrmisLeaveFrontendController(http.Controller):
     # -------------------------------------------------------------------------
     # Odoo Time Off default URLs (override to render the custom UI)
@@ -34,10 +45,7 @@ class HrmisLeaveFrontendController(http.Controller):
         # Render the same HRMIS "Services" dashboard at the Odoo URL.
         return request.render(
             "hr_holidays_updates.hrmis_services",
-            {
-                "page_title": "Services",
-                "active_menu": "services",
-            },
+            _base_ctx("Services", "services"),
         )
 
     @http.route(["/odoo/my-time-off"], type="http", auth="user", website=True)
@@ -46,10 +54,7 @@ class HrmisLeaveFrontendController(http.Controller):
         if not emp:
             return request.render(
                 "hr_holidays_updates.hrmis_services",
-                {
-                    "page_title": "My Time Off",
-                    "active_menu": "services",
-                },
+                _base_ctx("My Time Off", "services"),
             )
         # Default to history tab (matches "My Time Off")
         return self.hrmis_leave_form(emp.id, tab="history", **kw)
@@ -72,10 +77,7 @@ class HrmisLeaveFrontendController(http.Controller):
     def hrmis_services(self, **kw):
         return request.render(
             "hr_holidays_updates.hrmis_services",
-            {
-                "page_title": "Services",
-                "active_menu": "services",
-            },
+            _base_ctx("Services", "services"),
         )
 
     @http.route(["/hrmis/staff"], type="http", auth="user", website=True)
@@ -100,13 +102,13 @@ class HrmisLeaveFrontendController(http.Controller):
 
         return request.render(
             "hr_holidays_updates.hrmis_staff_search",
-            {
-                "page_title": "Search staff",
-                "active_menu": "staff",
-                "search_by": search_by,
-                "q": q,
-                "employees": employees,
-            },
+            _base_ctx(
+                "Search staff",
+                "staff",
+                search_by=search_by,
+                q=q,
+                employees=employees,
+            ),
         )
 
     @http.route(
@@ -117,13 +119,15 @@ class HrmisLeaveFrontendController(http.Controller):
         if not employee:
             return request.not_found()
 
+        current_emp = _current_employee()
+        active_menu = (
+            "user_profile"
+            if current_emp and current_emp.id == employee.id
+            else "staff"
+        )
         return request.render(
             "hr_holidays_updates.hrmis_staff_profile",
-            {
-                "page_title": "User profile",
-                "active_menu": "staff",
-                "employee": employee,
-            },
+            _base_ctx("User profile", active_menu, employee=employee),
         )
 
     @http.route(
@@ -139,11 +143,7 @@ class HrmisLeaveFrontendController(http.Controller):
 
         return request.render(
             "hr_holidays_updates.hrmis_staff_services",
-            {
-                "page_title": "Services",
-                "active_menu": "staff",
-                "employee": employee,
-            },
+            _base_ctx("Services", "leave_requests", employee=employee),
         )
 
     @http.route(
@@ -175,17 +175,17 @@ class HrmisLeaveFrontendController(http.Controller):
         success = kw.get("success")
         return request.render(
             "hr_holidays_updates.hrmis_leave_form",
-            {
-                "page_title": "Leave requests",
-                "active_menu": "services",
-                "employee": employee,
-                "tab": tab if tab in ("new", "history") else "new",
-                "leave_types": leave_types,
-                "history": history,
-                "error": error,
-                "success": success,
-                "today": date.today(),
-            },
+            _base_ctx(
+                "Leave requests",
+                "leave_requests",
+                employee=employee,
+                tab=tab if tab in ("new", "history") else "new",
+                leave_types=leave_types,
+                history=history,
+                error=error,
+                success=success,
+                today=date.today(),
+            ),
         )
 
     @http.route(
@@ -241,11 +241,7 @@ class HrmisLeaveFrontendController(http.Controller):
         )
         return request.render(
             "hr_holidays_updates.hrmis_leave_requests",
-            {
-                "page_title": "Leave requests",
-                "active_menu": "leave_requests",
-                "leaves": pending,
-            },
+            _base_ctx("Leave requests", "leave_requests", leaves=pending),
         )
 
     @http.route(
@@ -257,11 +253,7 @@ class HrmisLeaveFrontendController(http.Controller):
             return request.not_found()
         return request.render(
             "hr_holidays_updates.hrmis_leave_view",
-            {
-                "page_title": "Leave request",
-                "active_menu": "leave_requests",
-                "leave": leave,
-            },
+            _base_ctx("Leave request", "leave_requests", leave=leave),
         )
 
     @http.route(
