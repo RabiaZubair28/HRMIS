@@ -19,6 +19,7 @@
         'data/auto_allocation_cron.xml',
         'views/hr_holidays_views.xml',
         'views/hrmis_frontend_templates.xml',
+        'views/hrmis_frontend_menu.xml',
     ],
     'assets': {
         'web.assets_frontend': [
