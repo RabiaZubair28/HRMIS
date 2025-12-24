@@ -22,7 +22,7 @@ class HrmisLeaveFrontendController(http.Controller):
     @http.route(["/hrmis/services"], type="http", auth="user", website=True)
     def hrmis_services(self, **kw):
         return request.render(
-            "hrmis_leave_frontend.hrmis_services",
+            "hr_holidays_updates.hrmis_services",
             {
                 "page_title": "Services",
                 "active_menu": "services",
@@ -36,7 +36,6 @@ class HrmisLeaveFrontendController(http.Controller):
 
         employees = request.env["hr.employee"].sudo().browse([])
         if q:
-            domain = []
             if search_by == "cnic":
                 domain = [("hrmis_cnic", "ilike", q)]
             elif search_by == "designation":
@@ -51,7 +50,7 @@ class HrmisLeaveFrontendController(http.Controller):
             employees = request.env["hr.employee"].sudo().search(domain, limit=50)
 
         return request.render(
-            "hrmis_leave_frontend.hrmis_staff_search",
+            "hr_holidays_updates.hrmis_staff_search",
             {
                 "page_title": "Search staff",
                 "active_menu": "staff",
@@ -70,7 +69,7 @@ class HrmisLeaveFrontendController(http.Controller):
             return request.not_found()
 
         return request.render(
-            "hrmis_leave_frontend.hrmis_staff_profile",
+            "hr_holidays_updates.hrmis_staff_profile",
             {
                 "page_title": "User profile",
                 "active_menu": "staff",
@@ -90,7 +89,7 @@ class HrmisLeaveFrontendController(http.Controller):
             return request.not_found()
 
         return request.render(
-            "hrmis_leave_frontend.hrmis_staff_services",
+            "hr_holidays_updates.hrmis_staff_services",
             {
                 "page_title": "Services",
                 "active_menu": "staff",
@@ -112,7 +111,6 @@ class HrmisLeaveFrontendController(http.Controller):
         leave_types = request.env["hr.leave.type"].sudo().search(
             [("requires_allocation", "=", "no")], order="name asc"
         )
-        # Also show allocated types if present, but keep "no allocation" first
         alloc_types = request.env["hr.leave.type"].sudo().search(
             [("requires_allocation", "!=", "no")], order="name asc"
         )
@@ -127,7 +125,7 @@ class HrmisLeaveFrontendController(http.Controller):
         error = kw.get("error")
         success = kw.get("success")
         return request.render(
-            "hrmis_leave_frontend.hrmis_leave_form",
+            "hr_holidays_updates.hrmis_leave_form",
             {
                 "page_title": "Leave requests",
                 "active_menu": "services",
@@ -173,7 +171,6 @@ class HrmisLeaveFrontendController(http.Controller):
                 "name": remarks,
             }
             leave = request.env["hr.leave"].with_user(request.env.user).create(vals)
-            # Put it into "To Approve" state (same as clicking "Confirm")
             if hasattr(leave, "action_confirm"):
                 leave.action_confirm()
         except Exception:
@@ -188,14 +185,13 @@ class HrmisLeaveFrontendController(http.Controller):
     @http.route(["/hrmis/leave/requests"], type="http", auth="user", website=True)
     def hrmis_leave_requests(self, **kw):
         uid = request.env.user.id
-        # Match ohrms_holidays_approval behavior: show confirm leaves where current user is a validator
         pending = (
             request.env["hr.leave"]
             .sudo()
             .search([("state", "=", "confirm"), ("validation_status_ids.user_id", "=", uid)])
         )
         return request.render(
-            "hrmis_leave_frontend.hrmis_leave_requests",
+            "hr_holidays_updates.hrmis_leave_requests",
             {
                 "page_title": "Leave requests",
                 "active_menu": "leave_requests",
@@ -211,7 +207,7 @@ class HrmisLeaveFrontendController(http.Controller):
         if not leave:
             return request.not_found()
         return request.render(
-            "hrmis_leave_frontend.hrmis_leave_view",
+            "hr_holidays_updates.hrmis_leave_view",
             {
                 "page_title": "Leave request",
                 "active_menu": "leave_requests",
@@ -232,10 +228,8 @@ class HrmisLeaveFrontendController(http.Controller):
         if not leave:
             return request.not_found()
         try:
-            # In multi-level approval, each validator "approves" to forward to next.
             leave.with_user(request.env.user).action_approve()
         except Exception:
-            # Keep UI simple for now; show failure silently via redirect param.
             return request.redirect("/hrmis/leave/requests?error=forward_failed")
         return request.redirect("/hrmis/leave/requests?success=forwarded")
 

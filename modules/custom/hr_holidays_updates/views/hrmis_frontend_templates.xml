@@ -65,7 +65,7 @@
     </template>
 
     <template id="hrmis_services" name="HRMIS Services">
-        <t t-call="hrmis_leave_frontend.hrmis_ui_layout">
+        <t t-call="hr_holidays_updates.hrmis_ui_layout">
             <div class="hrmis-panel">
                 <div class="hrmis-panel__header">
                     <div class="hrmis-panel__title">Services</div>
@@ -91,7 +91,7 @@
     </template>
 
     <template id="hrmis_staff_search" name="HRMIS Staff Search">
-        <t t-call="hrmis_leave_frontend.hrmis_ui_layout">
+        <t t-call="hr_holidays_updates.hrmis_ui_layout">
             <div class="hrmis-panel">
                 <div class="hrmis-panel__header">
                     <div class="hrmis-panel__title">Search staff</div>
@@ -155,7 +155,7 @@
     </template>
 
     <template id="hrmis_staff_profile" name="HRMIS Staff Profile">
-        <t t-call="hrmis_leave_frontend.hrmis_ui_layout">
+        <t t-call="hr_holidays_updates.hrmis_ui_layout">
             <div class="hrmis-split">
                 <aside class="hrmis-profile">
                     <div class="hrmis-profile__card">
@@ -191,7 +191,7 @@
     </template>
 
     <template id="hrmis_staff_services" name="HRMIS Staff Services">
-        <t t-call="hrmis_leave_frontend.hrmis_ui_layout">
+        <t t-call="hr_holidays_updates.hrmis_ui_layout">
             <div class="hrmis-split">
                 <aside class="hrmis-profile">
                     <div class="hrmis-profile__card">
@@ -235,7 +235,7 @@
     </template>
 
     <template id="hrmis_leave_form" name="HRMIS Leave Form">
-        <t t-call="hrmis_leave_frontend.hrmis_ui_layout">
+        <t t-call="hr_holidays_updates.hrmis_ui_layout">
             <div class="hrmis-split">
                 <aside class="hrmis-profile">
                     <div class="hrmis-profile__card">
@@ -329,7 +329,7 @@
     </template>
 
     <template id="hrmis_leave_requests" name="HRMIS Leave Requests (Approvals)">
-        <t t-call="hrmis_leave_frontend.hrmis_ui_layout">
+        <t t-call="hr_holidays_updates.hrmis_ui_layout">
             <div class="hrmis-panel">
                 <div class="hrmis-panel__header">
                     <div class="hrmis-panel__title">Leave requests</div>
@@ -346,9 +346,7 @@
                     </t>
                     <t t-foreach="leaves" t-as="lv" t-foreach-index="i">
                         <div class="hrmis-leave-row">
-                            <div class="hrmis-leave-row__cell hrmis-leave-row__sno">
-                                <t t-esc="i + 1"/>
-                            </div>
+                            <div class="hrmis-leave-row__cell hrmis-leave-row__sno"><t t-esc="i + 1"/></div>
                             <div class="hrmis-leave-row__cell">
                                 <div class="strong"><t t-esc="lv.employee_id.name"/>, <t t-esc="lv.employee_id.hrmis_facility_id.name or 'Facility name'"/></div>
                                 <div class="sub"><t t-esc="lv.employee_id.hrmis_district_id.name or 'District name'"/></div>
@@ -372,7 +370,7 @@
     </template>
 
     <template id="hrmis_leave_view" name="HRMIS Leave View">
-        <t t-call="hrmis_leave_frontend.hrmis_ui_layout">
+        <t t-call="hr_holidays_updates.hrmis_ui_layout">
             <div class="hrmis-panel">
                 <div class="hrmis-panel__header">
                     <div class="hrmis-panel__title">Leave request</div>

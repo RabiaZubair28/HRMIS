@@ -16,7 +16,6 @@
         'hr',
         'project',
         'ohrms_holidays_approval',
-        'hrmis_leave_frontend',
     ],
     'data': [],
     'demo': [],
