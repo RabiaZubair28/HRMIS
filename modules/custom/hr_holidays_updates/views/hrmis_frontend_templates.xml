@@ -310,7 +310,7 @@
                                         <select class="hrmis-input" name="leave_type_id" required="required">
                                             <option value="">Drop down menu of leave types</option>
                                             <t t-foreach="leave_types" t-as="lt">
-                                                <option t-att-value="lt.id"><t t-esc="lt.display_name"/></option>
+                                                <option t-att-value="lt.id"><t t-esc="lt.name"/></option>
                                             </t>
                                         </select>
                                     </div>
