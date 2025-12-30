@@ -1,4 +1,6 @@
 from datetime import date as pydate
+from datetime import datetime as pydatetime
+from datetime import time as pytime
 
 from dateutil.relativedelta import relativedelta
 
@@ -10,14 +12,19 @@ class HrLeaveAllocation(models.Model):
 
     @api.model
     def _month_bounds(self, year: int, month: int):
-        start = pydate(year, month, 1)
-        end = start + relativedelta(months=1, days=-1)
+        """
+        Return month bounds as datetimes (inclusive) to match Odoo allocation checks.
+        """
+        start_d = pydate(year, month, 1)
+        end_d = start_d + relativedelta(months=1, days=-1)
+        start = pydatetime.combine(start_d, pytime.min)
+        end = pydatetime.combine(end_d, pytime.max.replace(microsecond=0))
         return start, end
 
     @api.model
     def _ytd_allocated_days(self, employee_id: int, leave_type_id: int, year: int):
-        start = pydate(year, 1, 1)
-        end = pydate(year, 12, 31)
+        start = pydatetime.combine(pydate(year, 1, 1), pytime.min)
+        end = pydatetime.combine(pydate(year, 12, 31), pytime.max.replace(microsecond=0))
         groups = self.read_group(
             [
                 ('employee_id', '=', employee_id),
@@ -38,23 +45,33 @@ class HrLeaveAllocation(models.Model):
 
         # Don't allocate before employee exists in service (if HRMIS joining date is set)
         joining = employee.hrmis_joining_date
-        if joining and joining > end:
+        if joining and joining > end.date():
             return
 
         # Only allocate for policy-enabled leave types
         if not leave_type.auto_allocate or not leave_type.max_days_per_month:
             return
 
-        # Avoid duplicates
-        exists = self.search_count([
+        # Avoid duplicates (tolerant to datetime boundary differences)
+        next_month_start = start + relativedelta(months=1)
+        existing = self.search([
             ('employee_id', '=', employee.id),
             ('holiday_status_id', '=', leave_type.id),
             ('allocation_type', '=', 'regular'),
-            ('date_from', '=', start),
-            ('date_to', '=', end),
             ('state', '=', 'validate'),
-        ]) > 0
-        if exists:
+            ('date_from', '>=', start),
+            ('date_from', '<', next_month_start),
+        ], limit=1)
+        if existing:
+            # Fix legacy allocations that were created with date-only bounds
+            # (e.g. month end at 00:00:00), which can fail Odoo's coverage checks.
+            updates = {}
+            if existing.date_from and existing.date_from > start:
+                updates['date_from'] = start
+            if existing.date_to and existing.date_to < end:
+                updates['date_to'] = end
+            if updates:
+                existing.sudo().write(updates)
             return
 
         # Apply annual cap if configured
