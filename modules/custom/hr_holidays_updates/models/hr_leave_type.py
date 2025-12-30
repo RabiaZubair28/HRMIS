@@ -1,5 +1,23 @@
 from odoo import models, fields, api
 
+
+def _num_to_word(n: int) -> str:
+    # Keep intentionally small/safe: only what we need for UI labels.
+    words = {
+        0: "Zero",
+        1: "One",
+        2: "Two",
+        3: "Three",
+        4: "Four",
+        5: "Five",
+        6: "Six",
+        7: "Seven",
+        8: "Eight",
+        9: "Nine",
+        10: "Ten",
+    }
+    return words.get(n, str(n))
+
 class HrLeaveType(models.Model):
     _inherit = 'hr.leave.type'
 
@@ -139,6 +157,67 @@ class HrLeaveType(models.Model):
             if not leave_types:
                 continue
             leave_types.write(vals)
+
+    @api.model
+    def ensure_casual_leave_policy(self):
+        """
+        Ensure a Casual Leave type exists and matches policy:
+        - 2 days/month (auto-allocated monthly)
+        - 24 days/year cap
+        """
+        # Try common naming variants to avoid creating duplicates.
+        lt = self.search(
+            ['|', ('name', '=ilike', 'Casual Leave'), ('name', '=ilike', 'Casual Leave (CL)')],
+            limit=1,
+        )
+        vals = {
+            'name': lt.name if lt else 'Casual Leave',
+            'allowed_gender': 'all',
+            # Odoo core field (selection): yes/no. Keep CL allocation-based.
+            'requires_allocation': 'yes',
+            # Policy fields used by our monthly cron + request constraints
+            'max_days_per_month': 2.0,
+            'max_days_per_year': 24.0,
+            'auto_allocate': True,
+        }
+        if lt:
+            lt.write(vals)
+        else:
+            self.create(vals)
+
+    def name_get(self):
+        """
+        Show policy limits in dropdowns (including HRMIS UI when using display_name).
+        Example: "Casual Leave (2 (Two) days/month, 24 days/year)"
+        """
+        res = []
+        for lt in self:
+            name = lt.name or ""
+
+            # Only annotate when a policy limit exists.
+            parts = []
+            if lt.max_days_per_month:
+                m = float(lt.max_days_per_month)
+                if m.is_integer():
+                    mi = int(m)
+                    if mi == 2:
+                        parts.append(f"{mi} ({_num_to_word(mi)}) days/month")
+                    else:
+                        parts.append(f"{mi} days/month")
+                else:
+                    parts.append(f"{m:g} days/month")
+            if lt.max_days_per_year:
+                y = float(lt.max_days_per_year)
+                if y.is_integer():
+                    parts.append(f"{int(y)} days/year")
+                else:
+                    parts.append(f"{y:g} days/year")
+
+            if parts:
+                name = f"{name} ({', '.join(parts)})"
+
+            res.append((lt.id, name))
+        return res
 
     def _check_allocation(self, employee_id, request_date_from, request_date_to):
         # Restore standard Odoo allocation validation.
