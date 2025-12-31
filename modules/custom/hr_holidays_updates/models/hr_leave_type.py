@@ -68,6 +68,81 @@ class HrLeaveType(models.Model):
     )
 
     @api.model
+    def ensure_policy_leave_types(self):
+        """
+        Ensure core policy leave types exist and are configured so auto-allocation works.
+        This runs on module upgrade and is safe to run repeatedly.
+        """
+        policies = [
+            # Leave on Half Pay: yearly entitlement
+            {
+                "names": ["Leave On Half Pay", "Leave on Half Pay", "Half Pay Leave"],
+                "canonical_name": "Leave On Half Pay",
+                "vals": {
+                    "allowed_gender": "all",
+                    "requires_allocation": "yes",
+                    "max_days_per_year": 20.0,
+                    "max_days_per_month": 0.0,
+                    "auto_allocate": True,
+                },
+            },
+            # Maternity: per-request cap and times-in-service (allocated as total entitlement)
+            {
+                "names": ["Maternity Leave", "Maternity"],
+                "canonical_name": "Maternity Leave",
+                "vals": {
+                    "allowed_gender": "female",
+                    "requires_allocation": "yes",
+                    "max_days_per_request": 90.0,
+                    "max_times_in_service": 3,
+                    "auto_allocate": True,
+                },
+            },
+            # Paternity
+            {
+                "names": ["Paternity Leave", "Paternity"],
+                "canonical_name": "Paternity Leave",
+                "vals": {
+                    "allowed_gender": "male",
+                    "requires_allocation": "yes",
+                    "max_days_per_request": 7.0,
+                    "max_times_in_service": 2,
+                    "auto_allocate": True,
+                },
+            },
+            # LPR
+            {
+                "names": [
+                    "Leave Preparatory to Retirement (LPR)",
+                    "Leave Preparatory to Retirement",
+                    "LPR",
+                ],
+                "canonical_name": "Leave Preparatory to Retirement (LPR)",
+                "vals": {
+                    "allowed_gender": "all",
+                    "requires_allocation": "yes",
+                    "max_days_per_request": 365.0,
+                    "max_times_in_service": 0,
+                    "auto_allocate": True,
+                },
+            },
+        ]
+
+        for pol in policies:
+            dom = []
+            for i, nm in enumerate(pol["names"]):
+                if i:
+                    dom = ["|"] + dom
+                dom += [("name", "=ilike", nm)]
+            leave_types = self.search(dom)
+            if leave_types:
+                leave_types.write(pol["vals"])
+                continue
+            # Only create if none exist under any known alias
+            vals = {"name": pol["canonical_name"], **pol["vals"]}
+            self.create(vals)
+
+    @api.model
     def apply_support_document_rules(self):
         """
         Ensure the listed leave types require a supporting document.
