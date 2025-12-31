@@ -158,7 +158,8 @@ class HrLeaveType(models.Model):
             for i, nm in enumerate(pol["names"]):
                 if i:
                     dom = ["|"] + dom
-                dom += [("name", "=ilike", nm)]
+                # Use ilike (contains) to match minor naming variations (e.g. trailing spaces)
+                dom += [("name", "ilike", nm)]
             leave_types = self.search(dom)
             if leave_types:
                 leave_types.write(pol["vals"])
@@ -183,7 +184,7 @@ class HrLeaveType(models.Model):
 
         # Archive any matching types (case-insensitive). Don't delete to avoid breaking references.
         for nm in unwanted_names:
-            leave_types = self.search([("name", "=ilike", nm)])
+            leave_types = self.search([("name", "ilike", nm)])
             if leave_types:
                 leave_types.write({"active": False})
 
@@ -252,7 +253,7 @@ class HrLeaveType(models.Model):
         }
 
         for leave_type_name, note in rules.items():
-            leave_types = self.search([('name', '=ilike', leave_type_name)])
+            leave_types = self.search([('name', 'ilike', leave_type_name)])
             if not leave_types:
                 continue
             leave_types.write({
@@ -277,7 +278,7 @@ class HrLeaveType(models.Model):
         }
 
         for leave_type_name, months in rules.items():
-            leave_types = self.search([('name', '=ilike', leave_type_name)])
+            leave_types = self.search([('name', 'ilike', leave_type_name)])
             if not leave_types:
                 continue
             leave_types.write({'min_service_months': months})
@@ -321,7 +322,8 @@ class HrLeaveType(models.Model):
         }
 
         for leave_type_name, vals in rules.items():
-            leave_types = self.search([('name', '=ilike', leave_type_name)])
+            # Use ilike to catch small name variations in existing databases.
+            leave_types = self.search([('name', 'ilike', leave_type_name)])
             if not leave_types:
                 continue
             leave_types.write(vals)
@@ -335,7 +337,7 @@ class HrLeaveType(models.Model):
         """
         # Try common naming variants to avoid creating duplicates.
         lt = self.search(
-            ['|', ('name', '=ilike', 'Casual Leave'), ('name', '=ilike', 'Casual Leave (CL)')],
+            ['|', ('name', 'ilike', 'Casual Leave'), ('name', 'ilike', 'Casual Leave (CL)')],
             limit=1,
         )
         vals = {
