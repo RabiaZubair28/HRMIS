@@ -129,8 +129,8 @@ class HrLeaveType(models.Model):
             "Casual Leave (CL)": {"max_days_per_month": 2.0, "max_days_per_year": 24.0, "auto_allocate": True},
             "Casual Leave": {"max_days_per_month": 2.0, "max_days_per_year": 24.0, "auto_allocate": True},
 
-            # Earned Leave (Full Pay): 48 days/year (accrues separately; this is a request cap)
-            "Earned Leave (Full Pay)": {"max_days_per_year": 48.0},
+            # Earned Leave (Full Pay): 4 days/month, 48 days/year
+            "Earned Leave (Full Pay)": {"max_days_per_month": 4.0, "max_days_per_year": 48.0},
             "Earned Leave With Pay": {"max_days_per_year": 48.0},
             "Earned Leave": {"max_days_per_year": 48.0},
 
