@@ -11,6 +11,27 @@ class HrLeaveAllocation(models.Model):
     _inherit = 'hr.leave.allocation'
 
     @api.model
+    def _as_datetime(self, value, *, end_of_day: bool = False):
+        """
+        Normalize date/datetime/string values to a datetime for safe comparisons.
+        Some legacy allocations may store date_from/date_to as dates.
+        """
+        if not value:
+            return None
+        # datetime is a subclass of date, so check it first.
+        if isinstance(value, pydatetime):
+            return value
+        if isinstance(value, pydate):
+            return pydatetime.combine(
+                value,
+                pytime.max.replace(microsecond=0) if end_of_day else pytime.min,
+            )
+        try:
+            return fields.Datetime.to_datetime(value)
+        except Exception:
+            return None
+
+    @api.model
     def _service_months_at(self, employee, ref_date):
         """
         Compute service length in months at a given reference date.
@@ -127,9 +148,11 @@ class HrLeaveAllocation(models.Model):
             # Fix legacy allocations that were created with date-only bounds
             # (e.g. month end at 00:00:00), which can fail Odoo's coverage checks.
             updates = {}
-            if existing.date_from and existing.date_from > start:
+            ex_from = self._as_datetime(existing.date_from, end_of_day=False)
+            ex_to = self._as_datetime(existing.date_to, end_of_day=True)
+            if ex_from and ex_from > start:
                 updates['date_from'] = start
-            if existing.date_to and existing.date_to < end:
+            if ex_to and ex_to < end:
                 updates['date_to'] = end
             if updates:
                 existing.sudo().write(updates)
