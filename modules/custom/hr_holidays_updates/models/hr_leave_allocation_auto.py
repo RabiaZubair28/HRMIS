@@ -59,10 +59,11 @@ class HrLeaveAllocation(models.Model):
         if joining and joining > end.date():
             return
 
-        # Respect gender restrictions to avoid useless allocations
+        # Respect gender restrictions to avoid invalid allocations
+        # If leave type is gender-restricted, require a matching (known) employee gender.
         allowed_gender = getattr(leave_type, 'allowed_gender', 'all') or 'all'
         emp_gender = employee.hrmis_gender or employee.gender or False
-        if allowed_gender in ('male', 'female') and emp_gender and emp_gender != allowed_gender:
+        if allowed_gender in ('male', 'female') and (not emp_gender or emp_gender != allowed_gender):
             return
 
         # Only allocate for policy-enabled leave types
@@ -126,10 +127,10 @@ class HrLeaveAllocation(models.Model):
         if joining and joining > end.date():
             return
 
-        # Respect gender restrictions to avoid useless allocations
+        # Respect gender restrictions to avoid invalid allocations
         allowed_gender = getattr(leave_type, 'allowed_gender', 'all') or 'all'
         emp_gender = employee.hrmis_gender or employee.gender or False
-        if allowed_gender in ('male', 'female') and emp_gender and emp_gender != allowed_gender:
+        if allowed_gender in ('male', 'female') and (not emp_gender or emp_gender != allowed_gender):
             return
 
         if not leave_type.auto_allocate or not leave_type.max_days_per_year:
@@ -183,10 +184,10 @@ class HrLeaveAllocation(models.Model):
         if leave_type.max_days_per_month or leave_type.max_days_per_year:
             return
 
-        # Respect gender restrictions to avoid useless allocations
+        # Respect gender restrictions to avoid invalid allocations
         allowed_gender = getattr(leave_type, 'allowed_gender', 'all') or 'all'
         emp_gender = employee.hrmis_gender or employee.gender or False
-        if allowed_gender in ('male', 'female') and emp_gender and emp_gender != allowed_gender:
+        if allowed_gender in ('male', 'female') and (not emp_gender or emp_gender != allowed_gender):
             return
 
         existing = self.search([
