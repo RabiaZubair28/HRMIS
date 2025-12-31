@@ -1,4 +1,58 @@
+import re
+
 from odoo import models, fields, api
+
+
+def _num_to_word(n: int) -> str:
+    # Keep intentionally small/safe: only what we need for UI labels.
+    words = {
+        0: "Zero",
+        1: "One",
+        2: "Two",
+        3: "Three",
+        4: "Four",
+        5: "Five",
+        6: "Six",
+        7: "Seven",
+        8: "Eight",
+        9: "Nine",
+        10: "Ten",
+    }
+    return words.get(n, str(n))
+
+
+def _fmt_days(v: float) -> str:
+    try:
+        f = float(v or 0.0)
+    except Exception:
+        return "0"
+    return str(int(f)) if f.is_integer() else f"{f:g}"
+
+
+_ZERO_OUT_OF_ZERO_RE = re.compile(
+    # Match common Odoo variants, including "day(s)" and odd spacing/non‑breaking spaces.
+    r"\(\s*0(?:\.0+)?(?:[\s\u00a0]+)remaining(?:[\s\u00a0]+)out(?:[\s\u00a0]+)of(?:[\s\u00a0]+)0(?:\.0+)?"
+    r"(?:[\s\u00a0]+)day(?:s|\(s\))?\s*\)",
+    re.IGNORECASE,
+)
+
+
+def _replace_requires_allocation(label: str) -> str:
+    return _ZERO_OUT_OF_ZERO_RE.sub("(Requires Allocation)", label or "")
+
+
+def _ctx_employee_id(ctx: dict):
+    """
+    Best-effort extraction of employee id from common Odoo contexts.
+    """
+    for key in ("employee_id", "default_employee_id", "employee_ids", "default_employee_ids"):
+        v = ctx.get(key)
+        if isinstance(v, int):
+            return v
+        if isinstance(v, (list, tuple)) and v and isinstance(v[0], int):
+            return v[0]
+    return None
+
 
 class HrLeaveType(models.Model):
     _inherit = 'hr.leave.type'
@@ -50,6 +104,173 @@ class HrLeaveType(models.Model):
     )
 
     @api.model
+    def ensure_policy_leave_types(self):
+        """
+        Ensure core policy leave types exist and are configured so auto-allocation works.
+        This runs on module upgrade and is safe to run repeatedly.
+        """
+        policies = [
+            # Earned Leave (Full Pay): monthly entitlement with annual cap
+            {
+                "names": ["Earned Leave (Full Pay)", "Earned Leave With Pay", "Earned Leave"],
+                "canonical_name": "Earned Leave (Full Pay)",
+                "vals": {
+                    "allowed_gender": "all",
+                    "requires_allocation": "yes",
+                    # Only eligible after 12 months of service
+                    "min_service_months": 12,
+                    "max_days_per_month": 4.0,
+                    "max_days_per_year": 48.0,
+                    "auto_allocate": True,
+                },
+            },
+            # Leave on Half Pay: yearly entitlement
+            {
+                "names": ["Leave On Half Pay", "Leave on Half Pay", "Half Pay Leave"],
+                "canonical_name": "Leave On Half Pay",
+                "vals": {
+                    "allowed_gender": "all",
+                    "requires_allocation": "yes",
+                    "max_days_per_year": 20.0,
+                    "max_days_per_month": 0.0,
+                    "auto_allocate": True,
+                },
+            },
+            # Maternity: per-request cap and times-in-service (allocated as total entitlement)
+            {
+                "names": ["Maternity Leave", "Maternity"],
+                "canonical_name": "Maternity Leave",
+                "vals": {
+                    "allowed_gender": "female",
+                    "requires_allocation": "yes",
+                    "max_days_per_request": 90.0,
+                    # Auto-allocate default entitlement (one-time): 90 days
+                    # (handled by _ensure_one_time_allocation because max_days_per_year=0)
+                    "max_days_per_year": 0.0,
+                    "max_times_in_service": 0,
+                    "auto_allocate": True,
+                },
+            },
+            # Paternity
+            {
+                "names": ["Paternity Leave", "Paternity"],
+                "canonical_name": "Paternity Leave",
+                "vals": {
+                    "allowed_gender": "male",
+                    "requires_allocation": "yes",
+                    "max_days_per_request": 7.0,
+                    # Auto-allocate default entitlement (one-time): 7 days
+                    "max_days_per_year": 0.0,
+                    "max_times_in_service": 0,
+                    "auto_allocate": True,
+                },
+            },
+            # LPR
+            {
+                "names": [
+                    "Leave Preparatory to Retirement (LPR)",
+                    "Leave Preparatory to Retirement",
+                    "LPR",
+                ],
+                "canonical_name": "Leave Preparatory to Retirement (LPR)",
+                "vals": {
+                    "allowed_gender": "all",
+                    "requires_allocation": "yes",
+                    "max_days_per_request": 365.0,
+                    "max_times_in_service": 0,
+                    "auto_allocate": True,
+                },
+            },
+        ]
+
+        for pol in policies:
+            dom = []
+            for i, nm in enumerate(pol["names"]):
+                if i:
+                    dom = ["|"] + dom
+                # Use ilike (contains) to match minor naming variations (e.g. trailing spaces)
+                dom += [("name", "ilike", nm)]
+            leave_types = self.search(dom)
+            if leave_types:
+                leave_types.write(pol["vals"])
+                continue
+            # Only create if none exist under any known alias
+            vals = {"name": pol["canonical_name"], **pol["vals"]}
+            self.create(vals)
+
+        # After ensuring policy flags/limits, backfill allocations immediately
+        # (same idea as Casual Leave) so employees see balances right away.
+        try:
+            self.env["hr.leave.allocation"].cron_auto_allocate_policy_leaves()
+        except Exception:
+            # Never break module upgrade due to backfill helper
+            pass
+
+    @api.model
+    def archive_unwanted_default_leave_types(self):
+        """
+        Odoo ships some default time off types (e.g. Paid Time Off / Sick / Unpaid).
+        If you don't want them in your instance, archive them safely by name.
+        """
+        # Exact names seen in standard Odoo databases / hr_holidays defaults.
+        unwanted_names = [
+            "Paid Time Off",
+            "Sick Time Off",
+            "Unpaid",
+            "Compensatory Days",
+        ]
+
+        # Archive any matching types (case-insensitive). Don't delete to avoid breaking references.
+        for nm in unwanted_names:
+            leave_types = self.search([("name", "ilike", nm)])
+            if leave_types:
+                leave_types.write({"active": False})
+
+    @api.model
+    def ensure_approval_allocated_leave_types(self):
+        """
+        Ensure these leave types exist so they appear in Odoo Time Off lists.
+        They are NOT auto-allocated; balance stays 0/0 until an allocation request
+        is approved (hence the label note in name_get()).
+        """
+        names = [
+            "Fitness To Resume Duty",
+            "Medical Leave (Long Term)",
+            "Medical Leave (Long-term)",
+            "Study Leave",
+            "Special Leave (Quarantine)",
+            "Special Leave - Quarantine",
+            "Special Leave (Accident/Injury)",
+            "Special Leave (Accident / Injury)",
+            "Special Leave Accident / Injuring",
+        ]
+
+        base_vals = {
+            "active": True,
+            "allowed_gender": "all",
+            "requires_allocation": "yes",
+            "auto_allocate": False,
+            "min_service_months": 0,
+        }
+
+        for nm in names:
+            lt = self.search([("name", "=ilike", nm)], limit=1)
+            if lt:
+                lt.write(base_vals)
+            else:
+                self.create({"name": nm, **base_vals})
+
+        # Additional service-eligibility requirements requested:
+        # - Study Leave: only after 5 years (60 months)
+        study = self.search([("name", "ilike", "Study Leave")])
+        if study:
+            study.write({
+                "min_service_months": 60,
+                # keep/ensure max duration per request per policy table
+                "max_days_per_request": 1095.0,
+            })
+
+    @api.model
     def apply_support_document_rules(self):
         """
         Ensure the listed leave types require a supporting document.
@@ -57,20 +278,30 @@ class HrLeaveType(models.Model):
         """
         rules = {
             # User-requested rules
-            "Leave Without Pay (EOL)": "Written request should be given.",
-            "Leave Without Pay": "Written request should be given.",
-            "Ex-Pakistan Leave": "Government Permission Letter.",
+            "Leave Without Pay (EOL)": "Written request would be attached.",
+            "Leave Without Pay": "Written request would be attached.",
+
+            "Maternity Leave": "Medical Certificate.",
+
+            "Ex-Pakistan Leave": "Govt. Permission Letter.",
+
             "Special Leave (Accident/Injury)": "Medical Certificate.",
             "Special Leave (Accident / Injury)": "Medical Certificate.",
-            "Special Leave (Quarantine)": "Quarantine order.",
-            "Study Leave": "Admission Letter & Course Details.",
+
+            "Study Leave": "Admission Letter / Course Details.",
+
             "Medical Leave (Long Term)": "Medical Certificate.",
+
+            "Fitness To Resume Duty": "Fitness Certificate.",
+
+            # Keep existing (not mentioned in latest request, but harmless)
+            "Special Leave (Quarantine)": "Quarantine order.",
             "Leave Preparatory to Retirement (LPR)": "Fitness Certificate.",
             "LPR": "Fitness Certificate.",
         }
 
         for leave_type_name, note in rules.items():
-            leave_types = self.search([('name', '=ilike', leave_type_name)])
+            leave_types = self.search([('name', 'ilike', leave_type_name)])
             if not leave_types:
                 continue
             leave_types.write({
@@ -95,7 +326,7 @@ class HrLeaveType(models.Model):
         }
 
         for leave_type_name, months in rules.items():
-            leave_types = self.search([('name', '=ilike', leave_type_name)])
+            leave_types = self.search([('name', 'ilike', leave_type_name)])
             if not leave_types:
                 continue
             leave_types.write({'min_service_months': months})
@@ -111,34 +342,120 @@ class HrLeaveType(models.Model):
             "Casual Leave (CL)": {"max_days_per_month": 2.0, "max_days_per_year": 24.0, "auto_allocate": True},
             "Casual Leave": {"max_days_per_month": 2.0, "max_days_per_year": 24.0, "auto_allocate": True},
 
-            # Earned Leave (Full Pay): 48 days/year (accrues separately; this is a request cap)
-            "Earned Leave (Full Pay)": {"max_days_per_year": 48.0},
-            "Earned Leave With Pay": {"max_days_per_year": 48.0},
-            "Earned Leave": {"max_days_per_year": 48.0},
+            # Earned Leave (Full Pay): 4 days/month, 48 days/year
+            "Earned Leave (Full Pay)": {"max_days_per_month": 4.0, "max_days_per_year": 48.0, "auto_allocate": True},
+            "Earned Leave With Pay": {"max_days_per_month": 4.0, "max_days_per_year": 48.0, "auto_allocate": True},
+            "Earned Leave": {"max_days_per_month": 4.0, "max_days_per_year": 48.0, "auto_allocate": True},
 
             # Leave on Half Pay: 20 days/year
-            "Leave On Half Pay": {"max_days_per_year": 20.0},
-            "Leave on Half Pay": {"max_days_per_year": 20.0},
+            "Leave On Half Pay": {"max_days_per_year": 20.0, "auto_allocate": True},
+            "Leave on Half Pay": {"max_days_per_year": 20.0, "auto_allocate": True},
+            "Half Pay Leave": {"max_days_per_year": 20.0, "auto_allocate": True},
 
-            # Maternity: 90 days per request, max 3 times in service
-            "Maternity Leave": {"max_days_per_request": 90.0, "max_times_in_service": 3},
+            # Maternity: auto-allocate default entitlement (one-time): 90 days
+            "Maternity Leave": {"max_days_per_request": 90.0, "max_days_per_year": 0.0, "max_times_in_service": 0, "auto_allocate": True},
+            "Maternity": {"max_days_per_request": 90.0, "max_days_per_year": 0.0, "max_times_in_service": 0, "auto_allocate": True},
 
-            # Paternity: 7 days per request, max 2 times in service
-            "Paternity Leave": {"max_days_per_request": 7.0, "max_times_in_service": 2},
+            # Paternity: auto-allocate default entitlement (one-time): 7 days
+            "Paternity Leave": {"max_days_per_request": 7.0, "max_days_per_year": 0.0, "max_times_in_service": 0, "auto_allocate": True},
+            "Paternity": {"max_days_per_request": 7.0, "max_days_per_year": 0.0, "max_times_in_service": 0, "auto_allocate": True},
 
             # Study: up to 2 years (extendable by 1) -> enforce max 3 years per request
             "Study Leave": {"max_days_per_request": 1095.0},
 
             # LPR: max 365 days
-            "Leave Preparatory to Retirement (LPR)": {"max_days_per_request": 365.0},
-            "LPR": {"max_days_per_request": 365.0},
+            "Leave Preparatory to Retirement (LPR)": {"max_days_per_request": 365.0, "auto_allocate": True},
+            "LPR": {"max_days_per_request": 365.0, "auto_allocate": True},
+            "Leave Preparatory to Retirement": {"max_days_per_request": 365.0, "auto_allocate": True},
         }
 
         for leave_type_name, vals in rules.items():
-            leave_types = self.search([('name', '=ilike', leave_type_name)])
+            # Use ilike to catch small name variations in existing databases.
+            leave_types = self.search([('name', 'ilike', leave_type_name)])
             if not leave_types:
                 continue
             leave_types.write(vals)
+
+    @api.model
+    def ensure_casual_leave_policy(self):
+        """
+        Ensure a Casual Leave type exists and matches policy:
+        - 2 days/month (auto-allocated monthly)
+        - 24 days/year cap
+        """
+        # Try common naming variants to avoid creating duplicates.
+        lt = self.search(
+            ['|', ('name', 'ilike', 'Casual Leave'), ('name', 'ilike', 'Casual Leave (CL)')],
+            limit=1,
+        )
+        vals = {
+            'name': lt.name if lt else 'Casual Leave',
+            'allowed_gender': 'all',
+            # Odoo core field (selection): yes/no. Keep CL allocation-based.
+            'requires_allocation': 'yes',
+            # Policy fields used by our monthly cron + request constraints
+            'max_days_per_month': 2.0,
+            'max_days_per_year': 24.0,
+            'auto_allocate': True,
+        }
+        if lt:
+            lt.write(vals)
+        else:
+            self.create(vals)
+
+    def name_get(self):
+        """
+        - In employee balance contexts, let Odoo build the standard label and then
+          replace "(0 remaining out of 0 days)" with "(Requires Allocation)" everywhere.
+
+        - Outside employee contexts, show policy limits (e.g. CL 2/month, 24/year).
+        """
+        # Always start from Odoo's own display label (which may include balances).
+        # Then replace the confusing "(0 remaining out of 0 days)" everywhere.
+        res = super().name_get()
+        res = [(rid, _replace_requires_allocation(name)) for rid, name in res]
+
+        # If Odoo already provided a balance-style label, keep it as-is (post-processed above).
+        if any("remaining out of" in (name or "").lower() for _, name in res):
+            return res
+
+        res = []
+        for lt in self:
+            base = lt.name or ""
+
+            # Non-employee contexts: show policy limits.
+            name = base
+            parts = []
+            if lt.max_days_per_month:
+                m = float(lt.max_days_per_month)
+                if m.is_integer():
+                    mi = int(m)
+                    if mi == 2:
+                        parts.append(f"{mi} ({_num_to_word(mi)}) days/month")
+                    else:
+                        parts.append(f"{mi} days/month")
+                else:
+                    parts.append(f"{m:g} days/month")
+            if lt.max_days_per_year:
+                y = float(lt.max_days_per_year)
+                if y.is_integer():
+                    parts.append(f"{int(y)} days/year")
+                else:
+                    parts.append(f"{y:g} days/year")
+            if parts:
+                name = f"{name} ({', '.join(parts)})"
+            res.append((lt.id, name))
+
+        return res
+
+    @api.model
+    def name_search(self, name="", args=None, operator="ilike", limit=100):
+        """
+        Some Odoo widgets rely on name_search() results directly for dropdown labels.
+        Ensure the 0/0 balance label is replaced there too.
+        """
+        res = super().name_search(name=name, args=args, operator=operator, limit=limit)
+        return [(rid, _replace_requires_allocation(label)) for rid, label in res]
 
     def _check_allocation(self, employee_id, request_date_from, request_date_to):
         # Restore standard Odoo allocation validation.
