@@ -188,6 +188,36 @@ class HrLeaveType(models.Model):
                 leave_types.write({"active": False})
 
     @api.model
+    def ensure_approval_allocated_leave_types(self):
+        """
+        Ensure these leave types exist so they appear in Odoo Time Off lists.
+        They are NOT auto-allocated; balance stays 0/0 until an allocation request
+        is approved (hence the label note in name_get()).
+        """
+        names = [
+            "Fitness To Resume Duty",
+            "Medical Leave (Long Term)",
+            "Study Leave",
+            "Special Leave (Quarantine)",
+            "Special Leave (Accident/Injury)",
+        ]
+
+        base_vals = {
+            "active": True,
+            "allowed_gender": "all",
+            "requires_allocation": "yes",
+            "auto_allocate": False,
+            "min_service_months": 0,
+        }
+
+        for nm in names:
+            lt = self.search([("name", "=ilike", nm)], limit=1)
+            if lt:
+                lt.write(base_vals)
+            else:
+                self.create({"name": nm, **base_vals})
+
+    @api.model
     def apply_support_document_rules(self):
         """
         Ensure the listed leave types require a supporting document.
