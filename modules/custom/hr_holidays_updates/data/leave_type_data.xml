@@ -29,12 +29,20 @@
     <record id="leave_type_maternity" model="hr.leave.type">
         <field name="name">Maternity Leave</field>
         <field name="allowed_gender">female</field>
+        <field name="requires_allocation">yes</field>
+        <field name="auto_allocate">True</field>
+        <field name="max_days_per_request">90</field>
+        <field name="max_days_per_year">90</field>
     </record>
 
     <!-- Paternity Leave (male only) -->
     <record id="leave_type_paternity" model="hr.leave.type">
         <field name="name">Paternity Leave</field>
         <field name="allowed_gender">male</field>
+        <field name="requires_allocation">yes</field>
+        <field name="auto_allocate">True</field>
+        <field name="max_days_per_request">7</field>
+        <field name="max_days_per_year">7</field>
     </record>
 
     <!-- Ex-Pakistan Leave -->
