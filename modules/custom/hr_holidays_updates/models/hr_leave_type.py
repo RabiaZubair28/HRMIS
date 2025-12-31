@@ -117,6 +117,8 @@ class HrLeaveType(models.Model):
                 "vals": {
                     "allowed_gender": "all",
                     "requires_allocation": "yes",
+                    # Only eligible after 12 months of service
+                    "min_service_months": 12,
                     "max_days_per_month": 4.0,
                     "max_days_per_year": 48.0,
                     "auto_allocate": True,
@@ -257,6 +259,16 @@ class HrLeaveType(models.Model):
                 lt.write(base_vals)
             else:
                 self.create({"name": nm, **base_vals})
+
+        # Additional service-eligibility requirements requested:
+        # - Study Leave: only after 5 years (60 months)
+        study = self.search([("name", "ilike", "Study Leave")])
+        if study:
+            study.write({
+                "min_service_months": 60,
+                # keep/ensure max duration per request per policy table
+                "max_days_per_request": 1095.0,
+            })
 
     @api.model
     def apply_support_document_rules(self):
