@@ -74,6 +74,18 @@ class HrLeaveType(models.Model):
         This runs on module upgrade and is safe to run repeatedly.
         """
         policies = [
+            # Earned Leave (Full Pay): monthly entitlement with annual cap
+            {
+                "names": ["Earned Leave (Full Pay)", "Earned Leave With Pay", "Earned Leave"],
+                "canonical_name": "Earned Leave (Full Pay)",
+                "vals": {
+                    "allowed_gender": "all",
+                    "requires_allocation": "yes",
+                    "max_days_per_month": 4.0,
+                    "max_days_per_year": 48.0,
+                    "auto_allocate": True,
+                },
+            },
             # Leave on Half Pay: yearly entitlement
             {
                 "names": ["Leave On Half Pay", "Leave on Half Pay", "Half Pay Leave"],
@@ -94,6 +106,7 @@ class HrLeaveType(models.Model):
                     "allowed_gender": "female",
                     "requires_allocation": "yes",
                     "max_days_per_request": 90.0,
+                    "max_days_per_year": 90.0,
                     "max_times_in_service": 3,
                     "auto_allocate": True,
                 },
@@ -106,6 +119,7 @@ class HrLeaveType(models.Model):
                     "allowed_gender": "male",
                     "requires_allocation": "yes",
                     "max_days_per_request": 7.0,
+                    "max_days_per_year": 7.0,
                     "max_times_in_service": 2,
                     "auto_allocate": True,
                 },
@@ -235,9 +249,9 @@ class HrLeaveType(models.Model):
             "Casual Leave": {"max_days_per_month": 2.0, "max_days_per_year": 24.0, "auto_allocate": True},
 
             # Earned Leave (Full Pay): 4 days/month, 48 days/year
-            "Earned Leave (Full Pay)": {"max_days_per_month": 4.0, "max_days_per_year": 48.0},
-            "Earned Leave With Pay": {"max_days_per_year": 48.0},
-            "Earned Leave": {"max_days_per_year": 48.0},
+            "Earned Leave (Full Pay)": {"max_days_per_month": 4.0, "max_days_per_year": 48.0, "auto_allocate": True},
+            "Earned Leave With Pay": {"max_days_per_month": 4.0, "max_days_per_year": 48.0, "auto_allocate": True},
+            "Earned Leave": {"max_days_per_month": 4.0, "max_days_per_year": 48.0, "auto_allocate": True},
 
             # Leave on Half Pay: 20 days/year
             "Leave On Half Pay": {"max_days_per_year": 20.0, "auto_allocate": True},
@@ -245,12 +259,12 @@ class HrLeaveType(models.Model):
             "Half Pay Leave": {"max_days_per_year": 20.0, "auto_allocate": True},
 
             # Maternity: 90 days per request, max 3 times in service
-            "Maternity Leave": {"max_days_per_request": 90.0, "max_times_in_service": 3, "auto_allocate": True},
-            "Maternity": {"max_days_per_request": 90.0, "max_times_in_service": 3, "auto_allocate": True},
+            "Maternity Leave": {"max_days_per_request": 90.0, "max_days_per_year": 90.0, "max_times_in_service": 3, "auto_allocate": True},
+            "Maternity": {"max_days_per_request": 90.0, "max_days_per_year": 90.0, "max_times_in_service": 3, "auto_allocate": True},
 
             # Paternity: 7 days per request, max 2 times in service
-            "Paternity Leave": {"max_days_per_request": 7.0, "max_times_in_service": 2, "auto_allocate": True},
-            "Paternity": {"max_days_per_request": 7.0, "max_times_in_service": 2, "auto_allocate": True},
+            "Paternity Leave": {"max_days_per_request": 7.0, "max_days_per_year": 7.0, "max_times_in_service": 2, "auto_allocate": True},
+            "Paternity": {"max_days_per_request": 7.0, "max_days_per_year": 7.0, "max_times_in_service": 2, "auto_allocate": True},
 
             # Study: up to 2 years (extendable by 1) -> enforce max 3 years per request
             "Study Leave": {"max_days_per_request": 1095.0},

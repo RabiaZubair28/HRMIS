@@ -11,6 +11,20 @@ class HrLeaveAllocation(models.Model):
     _inherit = 'hr.leave.allocation'
 
     @api.model
+    def _total_allocated_days(self, employee_id: int, leave_type_id: int):
+        groups = self.read_group(
+            [
+                ('employee_id', '=', employee_id),
+                ('holiday_status_id', '=', leave_type_id),
+                ('state', '=', 'validate'),
+            ],
+            ['number_of_days:sum'],
+            [],
+            lazy=False,
+        )
+        return (groups[0].get('number_of_days_sum') or 0.0) if groups else 0.0
+
+    @api.model
     def _year_bounds(self, year: int):
         """
         Return year bounds as datetimes (inclusive) to match Odoo allocation checks.
@@ -158,6 +172,16 @@ class HrLeaveAllocation(models.Model):
         days = float(leave_type.max_days_per_year)
         if days <= 0.0:
             return
+
+        # Apply lifetime cap when max_times_in_service is configured.
+        # Example: maternity 90 days/year, max 3 times => max 270 allocated over employment.
+        if leave_type.max_times_in_service:
+            total_cap = float(leave_type.max_days_per_year) * float(leave_type.max_times_in_service)
+            already = self._total_allocated_days(employee.id, leave_type.id)
+            remaining = max(0.0, total_cap - already)
+            days = min(days, remaining)
+            if days <= 0.0:
+                return
 
         alloc = self.sudo().create({
             'name': f"{leave_type.name} ({start.date()} - {end.date()})",
