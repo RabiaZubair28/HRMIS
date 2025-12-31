@@ -413,7 +413,7 @@ class HrLeave(models.Model):
                 if not lt or not emp:
                     continue
 
-                if not lt.auto_allocate or not lt.max_days_per_month:
+                if not lt.auto_allocate:
                     continue
 
                 # Determine request date range (best-effort, tolerate strings)
@@ -424,12 +424,20 @@ class HrLeave(models.Model):
                 if d_to and d_to < d_from:
                     d_to = d_from
 
-                # Ensure monthly allocations for all months touched by the request
-                cur = pydate(d_from.year, d_from.month, 1)
-                end_month = pydate((d_to or d_from).year, (d_to or d_from).month, 1)
-                while cur <= end_month:
-                    Allocation._ensure_monthly_allocation(emp, lt, cur.year, cur.month)
-                    cur = cur + relativedelta(months=1)
+                if lt.max_days_per_month:
+                    # Ensure monthly allocations for all months touched by the request
+                    cur = pydate(d_from.year, d_from.month, 1)
+                    end_month = pydate((d_to or d_from).year, (d_to or d_from).month, 1)
+                    while cur <= end_month:
+                        Allocation._ensure_monthly_allocation(emp, lt, cur.year, cur.month)
+                        cur = cur + relativedelta(months=1)
+                elif lt.max_days_per_year:
+                    # Ensure yearly allocations for all years touched by the request
+                    for y in range(d_from.year, (d_to or d_from).year + 1):
+                        Allocation._ensure_yearly_allocation(emp, lt, y)
+                else:
+                    # One-time employment entitlement (e.g. maternity/paternity/LPR)
+                    Allocation._ensure_one_time_allocation(emp, lt)
             except Exception:
                 # Never block leave creation due to auto-allocation helper
                 continue

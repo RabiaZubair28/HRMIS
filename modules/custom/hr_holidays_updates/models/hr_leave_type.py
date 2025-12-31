@@ -135,25 +135,25 @@ class HrLeaveType(models.Model):
             "Earned Leave": {"max_days_per_year": 48.0},
 
             # Leave on Half Pay: 20 days/year
-            "Leave On Half Pay": {"max_days_per_year": 20.0},
-            "Leave on Half Pay": {"max_days_per_year": 20.0},
-            "Half Pay Leave": {"max_days_per_year": 20.0},
+            "Leave On Half Pay": {"max_days_per_year": 20.0, "auto_allocate": True},
+            "Leave on Half Pay": {"max_days_per_year": 20.0, "auto_allocate": True},
+            "Half Pay Leave": {"max_days_per_year": 20.0, "auto_allocate": True},
 
             # Maternity: 90 days per request, max 3 times in service
-            "Maternity Leave": {"max_days_per_request": 90.0, "max_times_in_service": 3},
-            "Maternity": {"max_days_per_request": 90.0, "max_times_in_service": 3},
+            "Maternity Leave": {"max_days_per_request": 90.0, "max_times_in_service": 3, "auto_allocate": True},
+            "Maternity": {"max_days_per_request": 90.0, "max_times_in_service": 3, "auto_allocate": True},
 
             # Paternity: 7 days per request, max 2 times in service
-            "Paternity Leave": {"max_days_per_request": 7.0, "max_times_in_service": 2},
-            "Paternity": {"max_days_per_request": 7.0, "max_times_in_service": 2},
+            "Paternity Leave": {"max_days_per_request": 7.0, "max_times_in_service": 2, "auto_allocate": True},
+            "Paternity": {"max_days_per_request": 7.0, "max_times_in_service": 2, "auto_allocate": True},
 
             # Study: up to 2 years (extendable by 1) -> enforce max 3 years per request
             "Study Leave": {"max_days_per_request": 1095.0},
 
             # LPR: max 365 days
-            "Leave Preparatory to Retirement (LPR)": {"max_days_per_request": 365.0},
-            "LPR": {"max_days_per_request": 365.0},
-            "Leave Preparatory to Retirement": {"max_days_per_request": 365.0},
+            "Leave Preparatory to Retirement (LPR)": {"max_days_per_request": 365.0, "auto_allocate": True},
+            "LPR": {"max_days_per_request": 365.0, "auto_allocate": True},
+            "Leave Preparatory to Retirement": {"max_days_per_request": 365.0, "auto_allocate": True},
         }
 
         for leave_type_name, vals in rules.items():
