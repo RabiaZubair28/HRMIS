@@ -190,6 +190,14 @@ class HrLeaveType(models.Model):
             vals = {"name": pol["canonical_name"], **pol["vals"]}
             self.create(vals)
 
+        # After ensuring policy flags/limits, backfill allocations immediately
+        # (same idea as Casual Leave) so employees see balances right away.
+        try:
+            self.env["hr.leave.allocation"].cron_auto_allocate_policy_leaves()
+        except Exception:
+            # Never break module upgrade due to backfill helper
+            pass
+
     @api.model
     def archive_unwanted_default_leave_types(self):
         """
@@ -384,12 +392,14 @@ class HrLeaveType(models.Model):
 
         - Outside employee contexts, show policy limits (e.g. CL 2/month, 24/year).
         """
-        ctx = dict(self.env.context or {})
-        emp_id = _ctx_employee_id(ctx)
+        # Always start from Odoo's own display label (which may include balances).
+        # Then replace the confusing "(0 remaining out of 0 days)" everywhere.
+        res = super().name_get()
+        res = [(rid, _ZERO_OUT_OF_ZERO_RE.sub("(Requires Allocation)", name)) for rid, name in res]
 
-        if emp_id:
-            res = super().name_get()
-            return [(rid, _ZERO_OUT_OF_ZERO_RE.sub("(Requires Allocation)", name)) for rid, name in res]
+        # If Odoo already provided a balance-style label, keep it as-is (post-processed above).
+        if any("remaining out of" in (name or "").lower() for _, name in res):
+            return res
 
         res = []
         for lt in self:
