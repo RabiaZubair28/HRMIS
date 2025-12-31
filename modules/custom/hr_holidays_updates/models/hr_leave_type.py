@@ -75,14 +75,24 @@ class HrLeaveType(models.Model):
         """
         rules = {
             # User-requested rules
-            "Leave Without Pay (EOL)": "Written request should be given.",
-            "Leave Without Pay": "Written request should be given.",
-            "Ex-Pakistan Leave": "Government Permission Letter.",
+            "Leave Without Pay (EOL)": "Written request would be attached.",
+            "Leave Without Pay": "Written request would be attached.",
+
+            "Maternity Leave": "Medical Certificate.",
+
+            "Ex-Pakistan Leave": "Govt. Permission Letter.",
+
             "Special Leave (Accident/Injury)": "Medical Certificate.",
             "Special Leave (Accident / Injury)": "Medical Certificate.",
-            "Special Leave (Quarantine)": "Quarantine order.",
-            "Study Leave": "Admission Letter & Course Details.",
+
+            "Study Leave": "Admission Letter / Course Details.",
+
             "Medical Leave (Long Term)": "Medical Certificate.",
+
+            "Fitness To Resume Duty": "Fitness Certificate.",
+
+            # Keep existing (not mentioned in latest request, but harmless)
+            "Special Leave (Quarantine)": "Quarantine order.",
             "Leave Preparatory to Retirement (LPR)": "Fitness Certificate.",
             "LPR": "Fitness Certificate.",
         }
