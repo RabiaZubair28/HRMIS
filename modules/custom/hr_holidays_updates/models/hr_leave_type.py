@@ -136,8 +136,9 @@ class HrLeaveType(models.Model):
                     "allowed_gender": "female",
                     "requires_allocation": "yes",
                     "max_days_per_request": 90.0,
-                    # Yearly entitlement: 90 days/year
-                    "max_days_per_year": 90.0,
+                    # Auto-allocate default entitlement (one-time): 90 days
+                    # (handled by _ensure_one_time_allocation because max_days_per_year=0)
+                    "max_days_per_year": 0.0,
                     "max_times_in_service": 0,
                     "auto_allocate": True,
                 },
@@ -150,8 +151,8 @@ class HrLeaveType(models.Model):
                     "allowed_gender": "male",
                     "requires_allocation": "yes",
                     "max_days_per_request": 7.0,
-                    # Yearly entitlement: 7 days/year
-                    "max_days_per_year": 7.0,
+                    # Auto-allocate default entitlement (one-time): 7 days
+                    "max_days_per_year": 0.0,
                     "max_times_in_service": 0,
                     "auto_allocate": True,
                 },
@@ -325,13 +326,13 @@ class HrLeaveType(models.Model):
             "Leave on Half Pay": {"max_days_per_year": 20.0, "auto_allocate": True},
             "Half Pay Leave": {"max_days_per_year": 20.0, "auto_allocate": True},
 
-            # Maternity: 90 days per request, max 3 times in service
-            "Maternity Leave": {"max_days_per_request": 90.0, "max_days_per_year": 90.0, "max_times_in_service": 0, "auto_allocate": True},
-            "Maternity": {"max_days_per_request": 90.0, "max_days_per_year": 90.0, "max_times_in_service": 0, "auto_allocate": True},
+            # Maternity: auto-allocate default entitlement (one-time): 90 days
+            "Maternity Leave": {"max_days_per_request": 90.0, "max_days_per_year": 0.0, "max_times_in_service": 0, "auto_allocate": True},
+            "Maternity": {"max_days_per_request": 90.0, "max_days_per_year": 0.0, "max_times_in_service": 0, "auto_allocate": True},
 
-            # Paternity: 7 days per request, max 2 times in service
-            "Paternity Leave": {"max_days_per_request": 7.0, "max_days_per_year": 7.0, "max_times_in_service": 0, "auto_allocate": True},
-            "Paternity": {"max_days_per_request": 7.0, "max_days_per_year": 7.0, "max_times_in_service": 0, "auto_allocate": True},
+            # Paternity: auto-allocate default entitlement (one-time): 7 days
+            "Paternity Leave": {"max_days_per_request": 7.0, "max_days_per_year": 0.0, "max_times_in_service": 0, "auto_allocate": True},
+            "Paternity": {"max_days_per_request": 7.0, "max_days_per_year": 0.0, "max_times_in_service": 0, "auto_allocate": True},
 
             # Study: up to 2 years (extendable by 1) -> enforce max 3 years per request
             "Study Leave": {"max_days_per_request": 1095.0},
