@@ -402,13 +402,8 @@ class HrLeaveType(models.Model):
                     remaining = 0.0
                     total = 0.0
 
-                if (
-                    float(remaining or 0.0) == 0.0
-                    and float(total or 0.0) == 0.0
-                    and getattr(lt, "requires_allocation", "no") != "no"
-                ):
-                    # When a type requires allocation and none exists yet, show a clearer message.
-                    # (e.g. allocated manually after an allocation request approval)
+                if float(remaining or 0.0) == 0.0 and float(total or 0.0) == 0.0:
+                    # Replace the confusing default label everywhere.
                     label = f"{base} (Requires Allocation)"
                 else:
                     label = f"{base} ({_fmt_days(remaining)} remaining out of {_fmt_days(total)} days)"
