@@ -1,3 +1,5 @@
+import re
+
 from odoo import models, fields, api
 
 
@@ -25,6 +27,25 @@ def _fmt_days(v: float) -> str:
     except Exception:
         return "0"
     return str(int(f)) if f.is_integer() else f"{f:g}"
+
+
+_ZERO_OUT_OF_ZERO_RE = re.compile(
+    r"\(\s*0(?:\.0+)?\s+remaining\s+out\s+of\s+0(?:\.0+)?\s+days\s*\)",
+    re.IGNORECASE,
+)
+
+
+def _ctx_employee_id(ctx: dict):
+    """
+    Best-effort extraction of employee id from common Odoo contexts.
+    """
+    for key in ("employee_id", "default_employee_id", "employee_ids", "default_employee_ids"):
+        v = ctx.get(key)
+        if isinstance(v, int):
+            return v
+        if isinstance(v, (list, tuple)) and v and isinstance(v[0], int):
+            return v[0]
+    return None
 
 
 class HrLeaveType(models.Model):
@@ -357,61 +378,21 @@ class HrLeaveType(models.Model):
 
     def name_get(self):
         """
-        - In employee balance contexts, Odoo typically shows:
-          "Type (X remaining out of Y days)".
-          For specific types that are allocated only after allocation approval, replace
-          "0 remaining out of 0 days" with "(allocated after allocation request approval)".
+        - In employee balance contexts, let Odoo build the standard label and then
+          replace "(0 remaining out of 0 days)" with "(Requires Allocation)" everywhere.
 
-        - Outside employee contexts, show policy limits:
-          Example: "Casual Leave (2 (Two) days/month, 24 days/year)"
+        - Outside employee contexts, show policy limits (e.g. CL 2/month, 24/year).
         """
         ctx = dict(self.env.context or {})
-        emp_id = ctx.get("employee_id") or ctx.get("default_employee_id")
+        emp_id = _ctx_employee_id(ctx)
 
-        def _is_alloc_after_approval(leave_type_name: str) -> bool:
-            n = (leave_type_name or "").strip().lower()
-            if "fitness to resume duty" in n:
-                return True
-            if "study leave" in n:
-                return True
-            if "medical leave" in n and "long" in n:
-                return True
-            if "special leave" in n and "quarantine" in n:
-                return True
-            if "special leave" in n and ("accident" in n or "injury" in n or "injuring" in n):
-                return True
-            return False
+        if emp_id:
+            res = super().name_get()
+            return [(rid, _ZERO_OUT_OF_ZERO_RE.sub("(Requires Allocation)", name)) for rid, name in res]
 
         res = []
         for lt in self:
             base = lt.name or ""
-
-            # Employee balance context: mimic Odoo label with remaining/out-of.
-            if emp_id:
-                label = base
-                try:
-                    days = lt.with_context(employee_id=emp_id).get_days(emp_id) if hasattr(lt, "get_days") else {}
-                    info = days.get(emp_id) if isinstance(days, dict) else None
-                    if isinstance(info, dict):
-                        remaining = info.get("virtual_remaining_leaves")
-                        if remaining is None:
-                            remaining = info.get("remaining_leaves", 0.0)
-                        total = info.get("max_leaves", 0.0)
-                    else:
-                        remaining = 0.0
-                        total = 0.0
-                except Exception:
-                    remaining = 0.0
-                    total = 0.0
-
-                if float(remaining or 0.0) == 0.0 and float(total or 0.0) == 0.0:
-                    # Replace the confusing default label everywhere.
-                    label = f"{base} (Requires Allocation)"
-                else:
-                    label = f"{base} ({_fmt_days(remaining)} remaining out of {_fmt_days(total)} days)"
-
-                res.append((lt.id, label))
-                continue
 
             # Non-employee contexts: show policy limits.
             name = base
