@@ -143,6 +143,26 @@ class HrLeaveType(models.Model):
             self.create(vals)
 
     @api.model
+    def archive_unwanted_default_leave_types(self):
+        """
+        Odoo ships some default time off types (e.g. Paid Time Off / Sick / Unpaid).
+        If you don't want them in your instance, archive them safely by name.
+        """
+        # Exact names seen in standard Odoo databases / hr_holidays defaults.
+        unwanted_names = [
+            "Paid Time Off",
+            "Sick Time Off",
+            "Unpaid",
+            "Compensatory Days",
+        ]
+
+        # Archive any matching types (case-insensitive). Don't delete to avoid breaking references.
+        for nm in unwanted_names:
+            leave_types = self.search([("name", "=ilike", nm)])
+            if leave_types:
+                leave_types.write({"active": False})
+
+    @api.model
     def apply_support_document_rules(self):
         """
         Ensure the listed leave types require a supporting document.
