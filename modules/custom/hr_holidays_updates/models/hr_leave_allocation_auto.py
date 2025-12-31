@@ -11,6 +11,23 @@ class HrLeaveAllocation(models.Model):
     _inherit = 'hr.leave.allocation'
 
     @api.model
+    def _force_validate_allocation(self, alloc):
+        """
+        Ensure allocation is fully validated.
+        Some configurations use a 2-step validation (validate1 -> validate).
+        """
+        if not alloc:
+            return
+        # Try up to 2 times to pass validate1 -> validate
+        for _ in range(2):
+            if alloc.state == 'validate':
+                return
+            if hasattr(alloc, 'action_validate') and alloc.state in ('confirm', 'validate1'):
+                alloc.sudo().action_validate()
+            else:
+                return
+
+    @api.model
     def _as_datetime(self, value, *, end_of_day: bool = False):
         """
         Normalize date/datetime/string values to a datetime for safe comparisons.
@@ -140,7 +157,7 @@ class HrLeaveAllocation(models.Model):
             ('employee_id', '=', employee.id),
             ('holiday_status_id', '=', leave_type.id),
             ('allocation_type', '=', 'regular'),
-            ('state', '=', 'validate'),
+            ('state', 'in', ('confirm', 'validate1', 'validate')),
             ('date_from', '>=', start),
             ('date_from', '<', next_month_start),
         ], limit=1)
@@ -156,6 +173,7 @@ class HrLeaveAllocation(models.Model):
                 updates['date_to'] = end
             if updates:
                 existing.sudo().write(updates)
+            self._force_validate_allocation(existing)
             return
 
         # Apply annual cap if configured
@@ -177,8 +195,8 @@ class HrLeaveAllocation(models.Model):
             'number_of_days': days,
             'state': 'confirm',
         })
-        # Validate directly (no approval workflow needed)
-        alloc.sudo().action_validate()
+        # Validate directly (may be 1-step or 2-step depending on config)
+        self._force_validate_allocation(alloc)
 
     @api.model
     def _ensure_yearly_allocation(self, employee, leave_type, year: int):
@@ -211,7 +229,7 @@ class HrLeaveAllocation(models.Model):
             ('employee_id', '=', employee.id),
             ('holiday_status_id', '=', leave_type.id),
             ('allocation_type', '=', 'regular'),
-            ('state', '=', 'validate'),
+            ('state', 'in', ('confirm', 'validate1', 'validate')),
             ('date_from', '>=', start),
             ('date_from', '<', next_year_start),
         ], limit=1)
@@ -225,6 +243,7 @@ class HrLeaveAllocation(models.Model):
                 updates['date_to'] = end
             if updates:
                 existing.sudo().write(updates)
+            self._force_validate_allocation(existing)
             return
 
         days = float(leave_type.max_days_per_year)
@@ -251,7 +270,7 @@ class HrLeaveAllocation(models.Model):
             'number_of_days': days,
             'state': 'confirm',
         })
-        alloc.sudo().action_validate()
+        self._force_validate_allocation(alloc)
 
     @api.model
     def _ensure_one_time_allocation(self, employee, leave_type):
@@ -281,9 +300,10 @@ class HrLeaveAllocation(models.Model):
             ('employee_id', '=', employee.id),
             ('holiday_status_id', '=', leave_type.id),
             ('allocation_type', '=', 'regular'),
-            ('state', '=', 'validate'),
+            ('state', 'in', ('confirm', 'validate1', 'validate')),
         ], limit=1)
         if existing:
+            self._force_validate_allocation(existing)
             return
 
         # Allocate total entitlement for the employee's service.
@@ -306,7 +326,7 @@ class HrLeaveAllocation(models.Model):
             'number_of_days': total,
             'state': 'confirm',
         })
-        alloc.sudo().action_validate()
+        self._force_validate_allocation(alloc)
 
     @api.model
     def cron_auto_allocate_policy_leaves(self):
