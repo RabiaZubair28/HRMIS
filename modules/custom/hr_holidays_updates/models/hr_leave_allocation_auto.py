@@ -217,9 +217,11 @@ class HrLeaveAllocation(models.Model):
         ], limit=1)
         if existing:
             updates = {}
-            if existing.date_from and existing.date_from > start:
+            ex_from = self._as_datetime(existing.date_from, end_of_day=False)
+            ex_to = self._as_datetime(existing.date_to, end_of_day=True)
+            if ex_from and ex_from > start:
                 updates['date_from'] = start
-            if existing.date_to and existing.date_to < end:
+            if ex_to and ex_to < end:
                 updates['date_to'] = end
             if updates:
                 existing.sudo().write(updates)
