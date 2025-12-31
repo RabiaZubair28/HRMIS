@@ -137,12 +137,15 @@ class HrLeaveType(models.Model):
             # Leave on Half Pay: 20 days/year
             "Leave On Half Pay": {"max_days_per_year": 20.0},
             "Leave on Half Pay": {"max_days_per_year": 20.0},
+            "Half Pay Leave": {"max_days_per_year": 20.0},
 
             # Maternity: 90 days per request, max 3 times in service
             "Maternity Leave": {"max_days_per_request": 90.0, "max_times_in_service": 3},
+            "Maternity": {"max_days_per_request": 90.0, "max_times_in_service": 3},
 
             # Paternity: 7 days per request, max 2 times in service
             "Paternity Leave": {"max_days_per_request": 7.0, "max_times_in_service": 2},
+            "Paternity": {"max_days_per_request": 7.0, "max_times_in_service": 2},
 
             # Study: up to 2 years (extendable by 1) -> enforce max 3 years per request
             "Study Leave": {"max_days_per_request": 1095.0},
@@ -150,6 +153,7 @@ class HrLeaveType(models.Model):
             # LPR: max 365 days
             "Leave Preparatory to Retirement (LPR)": {"max_days_per_request": 365.0},
             "LPR": {"max_days_per_request": 365.0},
+            "Leave Preparatory to Retirement": {"max_days_per_request": 365.0},
         }
 
         for leave_type_name, vals in rules.items():
