@@ -30,9 +30,15 @@ def _fmt_days(v: float) -> str:
 
 
 _ZERO_OUT_OF_ZERO_RE = re.compile(
-    r"\(\s*0(?:\.0+)?\s+remaining\s+out\s+of\s+0(?:\.0+)?\s+days\s*\)",
+    # Match common Odoo variants, including "day(s)" and odd spacing/non‑breaking spaces.
+    r"\(\s*0(?:\.0+)?(?:[\s\u00a0]+)remaining(?:[\s\u00a0]+)out(?:[\s\u00a0]+)of(?:[\s\u00a0]+)0(?:\.0+)?"
+    r"(?:[\s\u00a0]+)day(?:s|\(s\))?\s*\)",
     re.IGNORECASE,
 )
+
+
+def _replace_requires_allocation(label: str) -> str:
+    return _ZERO_OUT_OF_ZERO_RE.sub("(Requires Allocation)", label or "")
 
 
 def _ctx_employee_id(ctx: dict):
@@ -395,7 +401,7 @@ class HrLeaveType(models.Model):
         # Always start from Odoo's own display label (which may include balances).
         # Then replace the confusing "(0 remaining out of 0 days)" everywhere.
         res = super().name_get()
-        res = [(rid, _ZERO_OUT_OF_ZERO_RE.sub("(Requires Allocation)", name)) for rid, name in res]
+        res = [(rid, _replace_requires_allocation(name)) for rid, name in res]
 
         # If Odoo already provided a balance-style label, keep it as-is (post-processed above).
         if any("remaining out of" in (name or "").lower() for _, name in res):
@@ -429,6 +435,15 @@ class HrLeaveType(models.Model):
             res.append((lt.id, name))
 
         return res
+
+    @api.model
+    def name_search(self, name="", args=None, operator="ilike", limit=100):
+        """
+        Some Odoo widgets rely on name_search() results directly for dropdown labels.
+        Ensure the 0/0 balance label is replaced there too.
+        """
+        res = super().name_search(name=name, args=args, operator=operator, limit=limit)
+        return [(rid, _replace_requires_allocation(label)) for rid, label in res]
 
     def _check_allocation(self, employee_id, request_date_from, request_date_to):
         # Restore standard Odoo allocation validation.
