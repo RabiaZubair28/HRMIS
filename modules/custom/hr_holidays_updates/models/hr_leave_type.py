@@ -197,9 +197,13 @@ class HrLeaveType(models.Model):
         names = [
             "Fitness To Resume Duty",
             "Medical Leave (Long Term)",
+            "Medical Leave (Long-term)",
             "Study Leave",
             "Special Leave (Quarantine)",
+            "Special Leave - Quarantine",
             "Special Leave (Accident/Injury)",
+            "Special Leave (Accident / Injury)",
+            "Special Leave Accident / Injuring",
         ]
 
         base_vals = {
