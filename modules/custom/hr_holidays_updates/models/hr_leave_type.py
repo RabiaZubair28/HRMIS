@@ -246,11 +246,17 @@ class HrLeaveType(models.Model):
         }
 
         for nm in names:
+            # Study Leave should be configured as "Other" (Time Type) where supported by Odoo.
+            # Some databases/versions may not have this field, so guard it.
+            extra_vals = {}
+            if nm.lower() == "study leave" and "time_type" in self._fields:
+                extra_vals["time_type"] = "other"
+
             lt = self.search([("name", "=ilike", nm)], limit=1)
             if lt:
-                lt.write(base_vals)
+                lt.write({**base_vals, **extra_vals})
             else:
-                self.create({"name": nm, **base_vals})
+                self.create({"name": nm, **base_vals, **extra_vals})
 
     @api.model
     def apply_support_document_rules(self):
