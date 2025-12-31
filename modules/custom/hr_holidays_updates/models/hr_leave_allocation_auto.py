@@ -11,6 +11,31 @@ class HrLeaveAllocation(models.Model):
     _inherit = 'hr.leave.allocation'
 
     @api.model
+    def _service_months_at(self, employee, ref_date):
+        """
+        Compute service length in months at a given reference date.
+        Mirrors logic used in hr_leave_allocation.py compute field.
+        """
+        joining = employee.hrmis_joining_date
+        if not joining or not ref_date:
+            return 0
+        if isinstance(ref_date, pydatetime):
+            ref_date = ref_date.date()
+        if ref_date < joining:
+            return 0
+        delta = relativedelta(ref_date, joining)
+        return delta.years * 12 + delta.months
+
+    @api.model
+    def _eligible_by_service(self, employee, leave_type, ref_date):
+        required = float(getattr(leave_type, 'min_service_months', 0) or 0)
+        if required <= 0:
+            return True
+        # If joining date is missing, treat as not eligible (avoids constraint errors)
+        months = self._service_months_at(employee, ref_date)
+        return months >= required
+
+    @api.model
     def _total_allocated_days(self, employee_id: int, leave_type_id: int):
         groups = self.read_group(
             [
@@ -71,6 +96,10 @@ class HrLeaveAllocation(models.Model):
         # Don't allocate before employee exists in service (if HRMIS joining date is set)
         joining = employee.hrmis_joining_date
         if joining and joining > end.date():
+            return
+
+        # Respect minimum service eligibility (prevents install/upgrade failures)
+        if not self._eligible_by_service(employee, leave_type, start):
             return
 
         # Respect gender restrictions to avoid invalid allocations
@@ -141,6 +170,10 @@ class HrLeaveAllocation(models.Model):
         if joining and joining > end.date():
             return
 
+        # Respect minimum service eligibility
+        if not self._eligible_by_service(employee, leave_type, start):
+            return
+
         # Respect gender restrictions to avoid invalid allocations
         allowed_gender = getattr(leave_type, 'allowed_gender', 'all') or 'all'
         emp_gender = employee.hrmis_gender or employee.gender or False
@@ -208,6 +241,11 @@ class HrLeaveAllocation(models.Model):
         if leave_type.max_days_per_month or leave_type.max_days_per_year:
             return
 
+        # Respect minimum service eligibility
+        joining = employee.hrmis_joining_date or fields.Date.today()
+        if not self._eligible_by_service(employee, leave_type, joining):
+            return
+
         # Respect gender restrictions to avoid invalid allocations
         allowed_gender = getattr(leave_type, 'allowed_gender', 'all') or 'all'
         emp_gender = employee.hrmis_gender or employee.gender or False
@@ -230,7 +268,6 @@ class HrLeaveAllocation(models.Model):
         times = int(leave_type.max_times_in_service or 0)
         total = per_req * (times if times > 0 else 1)
 
-        joining = employee.hrmis_joining_date or fields.Date.today()
         start = pydatetime.combine(pydate(joining.year, joining.month, joining.day), pytime.min)
 
         alloc = self.sudo().create({
